@@ -1,43 +1,50 @@
 #include "../../sr_module.h"
 
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
+// http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
+//
 
-MODULE_VERSION /* Module */
+MODULE_VERSION
+
+/* Module */
 
 static int mod_init(void);
 static void mod_destroy(void);
 static int child_init(int);
 
-/*
- * Script commands we export.
- */
-static cmd_export_t cmds[]={
-  {0,0,0,0,0}
+static cmd_export_t cmds[] = {
+	{0, 0, 0, 0, 0, 0}
 };
 
-/*
- * Script parameters
- */
+static pv_export_t mod_pvs[] = {
+	{{0, 0}, 0, 0, 0, 0, 0, 0, 0}
+};
+
+static mi_export_t mi_cmds[] = {
+	{0,0,0,0,0}
+};
+
 static param_export_t mod_params[]={
-  { 0,0,0 }
+	{0,0,0}
 };
 
-/*
- * Export the statistics we have
- */
 static stat_export_t mod_stats[] = {
-  {0,0,0}
+	{0,0,0}
 };
 
-struct module_exports exports= {
-  "media",	/* module's name */
-  cmds,         /* exported functions */
-  mod_params,   /* param exports */
-  mod_stats,    /* exported statistics */
-  mod_init,      /* module initialization function */
-  0,            /* reply processing function FIXME Not sure when this is used */
-  mod_destroy,   /* Destroy function */
-  child_init     /* per-child init function */
+struct module_exports exports = {
+	"rtp_media_server",
+	DEFAULT_DLFLAGS, /* dlopen flags */
+	cmds,
+	mod_params,
+	mod_stats,   /* exported statistics */
+	mi_cmds,     /* exported MI functions */
+	mod_pvs,     /* exported pseudo-variables */
+	0,           /* extra processes */
+	mod_init,
+	0,           /* reply processing */
+	mod_destroy, /* destroy function */
+	child_init
 };
 
 /**
@@ -72,7 +79,7 @@ static void mod_destroy() {
  * If this function returns a nonzero value the loading of OpenSER will
  * stop.
  */
-static int childInit(int rank) {
+static int child_init(int rank) {
 	int rtn = 0;
 	return(rtn);
 }
