@@ -1,0 +1,12 @@
+[submodule "mediastreamer2"]
+	path = mediastreamer2
+	url = git@github.com:BelledonneCommunications/mediastreamer2.git
+[submodule "ortp"]
+	path = ortp
+	url = git@github.com:BelledonneCommunications/ortp.git
+[submodule "bctoolbox"]
+	path = bctoolbox
+	url = git@github.com:BelledonneCommunications/bctoolbox.git
+[submodule "bcunit"]
+	path = bcunit
+	url = git@github.com:BelledonneCommunications/bcunit.git
