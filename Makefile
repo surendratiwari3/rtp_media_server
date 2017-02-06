@@ -1,6 +1,6 @@
 include ../../Makefile.defs
 auto_gen=
-NAME=media.so
+NAME=rtp_media_server.so
 LIBS= 
 DEFS+=-DKAMAILIO_MOD_INTERFACE
 
