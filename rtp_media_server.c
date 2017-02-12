@@ -1,5 +1,9 @@
 #include "../../sr_module.h"
 
+
+#include <mediastreamer2/mediastream.h>
+#include <ortp/ortp.h>
+
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
 // http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
 //
@@ -12,7 +16,10 @@ static int mod_init(void);
 static void mod_destroy(void);
 static int child_init(int);
 
+static int rtp_media_offer(struct sip_msg *, char *, char *);
+
 static cmd_export_t cmds[] = {
+	{"rtp_media_offer",(cmd_function)rtp_media_offer,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -82,4 +89,49 @@ static void mod_destroy() {
 static int child_init(int rank) {
 	int rtn = 0;
 	return(rtn);
+}
+
+static int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+	// sample/submodules/linphone/console/sipomatic.c
+	//PayloadType *payload;
+	//char *plabackfile;
+	RtpProfile *profile = rtp_profile_new("remote");
+	LM_INFO("rtp_profile created: %s", profile->name);
+
+// int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
+// 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
+// {
+// 	return audio_stream_start_full(stream,prof,remip,remport,remip,rem_rtcp_port,pt,jitt_comp,infile,outfile,NULL,NULL,FALSE);
+// }
+
+	
+
+ /*
+  * int audio_stream_start_from_io(AudioStream *stream
+  *                                RtpProfile *profile,
+  *                                const char *rem_rtp_ip,
+  *                                int rem_rtp_port,
+                                   const char *rem_rtcp_ip,
+				   int rem_rtcp_port,
+				   int payload,
+				   const MSMediaStreamIO *io) {
+ */
+
+/*
+ *
+	char *name;
+	PayloadType *payload[RTP_PROFILE_MAX_PAYLOADS];
+int audio_stream_start_full(AudioStream *stream,
+		RtpProfile *profile,
+		const char *rem_rtp_ip,
+		int rem_rtp_port,
+		const char *rem_rtcp_ip,
+		int rem_rtcp_port,
+		int payload,
+		int jitt_comp, const char *infile, const char *outfile,
+		MSSndCard *playcard,
+		MSSndCard *captcard,
+		bool_t use_ec)
+*/
+	return 1;
 }
