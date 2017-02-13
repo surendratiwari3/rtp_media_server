@@ -1,5 +1,5 @@
 #include "../../sr_module.h"
-
+#include "../../parser/sdp/sdp_helpr_funcs.h"
 
 #include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
@@ -91,12 +91,28 @@ static int child_init(int rank) {
 	return(rtn);
 }
 
-static int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+
+int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+	str body;
+	int remote_ip_type=0;
+	str remote_ip = str_init("255.255.255.255");
+	char sdp_line[260];
 	// sample/submodules/linphone/console/sipomatic.c
 	//PayloadType *payload;
 	//char *plabackfile;
 	RtpProfile *profile = rtp_profile_new("remote");
 	LM_INFO("rtp_profile created: %s", profile->name);
+	body.s = get_body(msg);
+	if(body.s == 0)
+		return 0;
+{
+	str body_tmp = body;
+	LM_INFO("SDP[%s]\n", body_tmp.s);
+	extract_mediaip(&body_tmp, &remote_ip, &remote_ip_type, sdp_line);
+	//LM_INFO("media IP[%s][%s]\n", remote_ip.s, sdp_line);
+	LM_INFO("line[%s]\n", sdp_line);
+}
+	// sdp_parse_payload_types
 
 // int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
 // 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
