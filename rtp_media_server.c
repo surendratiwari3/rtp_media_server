@@ -1,5 +1,6 @@
 #include "../../sr_module.h"
 #include "../../parser/sdp/sdp_helpr_funcs.h"
+#include "../../parser/parse_content.h"
 
 #include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
@@ -103,13 +104,16 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	RtpProfile *profile = rtp_profile_new("remote");
 	LM_INFO("rtp_profile created: %s", profile->name);
 	body.s = get_body(msg);
-	if(body.s == 0)
-		return 0;
+	if(!body.s) {
+		return -1;
+	} else {
+		body.len = get_content_length(msg);
+	}
 {
 	str body_tmp = body;
-	LM_INFO("SDP[%s]\n", body_tmp.s);
-	extract_mediaip(&body_tmp, &remote_ip, &remote_ip_type, sdp_line);
-	//LM_INFO("media IP[%s][%s]\n", remote_ip.s, sdp_line);
+	LM_INFO("SDP[%d][%s]\n", body_tmp.len, body_tmp.s);
+	extract_mediaip(&body_tmp, &remote_ip, &remote_ip_type, "c=");
+	LM_INFO("media IP[%d][%s][%d]\n", remote_ip.len, remote_ip.s, remote_ip_type);
 	LM_INFO("line[%s]\n", sdp_line);
 }
 	// sdp_parse_payload_types
