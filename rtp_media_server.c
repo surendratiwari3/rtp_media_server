@@ -94,29 +94,61 @@ static int child_init(int rank) {
 
 
 int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
-	str body;
-	int remote_ip_type=0;
-	str remote_ip = str_init("255.255.255.255");
-	char sdp_line[260];
-	// sample/submodules/linphone/console/sipomatic.c
-	//PayloadType *payload;
-	//char *plabackfile;
+	str tmp;
+	char * remote_ip;// = str_init("255.255.255.255");
 	RtpProfile *profile = rtp_profile_new("remote");
-	LM_INFO("rtp_profile created: %s", profile->name);
-	body.s = get_body(msg);
-	if(!body.s) {
+	LM_INFO("rtp_profile created: %s\n", profile->name);
+
+{
+	sdp_session_cell_t* sdp_session;
+	sdp_stream_cell_t* sdp_stream;
+	str media_ip;
+	int sdp_session_num = 0;
+	int sdp_stream_num = get_sdp_stream_num(msg);
+	if(parse_sdp(msg) < 0) {
+		LM_INFO("can not parse sdp\n");
+		return -1;
+	}
+	sdp_info_t *sdp = (sdp_info_t*)msg->body;
+	if(!sdp) {
+		LM_INFO("sdp null\n");
+		return -1;
+	}
+	LM_INFO("sdp body type[%d]\n", sdp->type);
+	if (sdp_stream_num > 1 || !sdp_stream_num) {
+		LM_INFO("only support one stream[%d]\n[%s]\n", sdp_stream_num, get_body(msg));
+	}
+	sdp_stream_num = 0;
+	sdp_session = get_sdp_session(msg, sdp_session_num);
+	if(!sdp_session) {
 		return -1;
 	} else {
-		body.len = get_content_length(msg);
+		int sdp_stream_num = 0;
+		sdp_stream = get_sdp_stream(msg, sdp_session_num, sdp_stream_num);
+		if(!sdp_stream) {
+			LM_INFO("can not get the sdp stream\n");
+			return -1;
+		} else {
+			char *payloads=pkg_malloc(sdp_stream->payloads.len+1);
+			strncpy(payloads,sdp_stream->payloads.s,sdp_stream->payloads.len);
+			payloads[sdp_stream->payloads.len]='\0';
+			LM_INFO("payloads_num[%d] payload[%s]\n", sdp_stream->payloads_num, payloads);
+		}
 	}
-{
-	str body_tmp = body;
-	LM_INFO("SDP[%d][%s]\n", body_tmp.len, body_tmp.s);
-	extract_mediaip(&body_tmp, &remote_ip, &remote_ip_type, "c=");
-	LM_INFO("media IP[%d][%s][%d]\n", remote_ip.len, remote_ip.s, remote_ip_type);
-	LM_INFO("line[%s]\n", sdp_line);
+	if (sdp_stream->ip_addr.s && sdp_stream->ip_addr.len>0) {
+		media_ip = sdp_stream->ip_addr;
+		//pf = sdp_stream->pf;
+	} else {
+		media_ip = sdp_session->ip_addr;
+		//pf = sdp_session->pf;
+	}
+	remote_ip = pkg_malloc(tmp.len + 1);
+	strncpy(remote_ip, media_ip.s, media_ip.len);
+	remote_ip[media_ip.len] = '\0';
+	LM_INFO("remote media IP[%s]\n", remote_ip);
+
+
 }
-	// sdp_parse_payload_types
 
 // int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
 // 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
