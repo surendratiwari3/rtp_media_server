@@ -93,13 +93,13 @@ static int child_init(int rank) {
 }
 
 
-int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
-	str tmp;
-	char * remote_ip;// = str_init("255.255.255.255");
-	RtpProfile *profile = rtp_profile_new("remote");
-	LM_INFO("rtp_profile created: %s\n", profile->name);
+typedef struct rms_sdp_info {
+	char * remote_ip;
+} rms_sdp_info_t;
 
-{
+
+static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
+	str tmp;
 	sdp_session_cell_t* sdp_session;
 	sdp_stream_cell_t* sdp_stream;
 	str media_ip;
@@ -142,13 +142,25 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 		media_ip = sdp_session->ip_addr;
 		//pf = sdp_session->pf;
 	}
-	remote_ip = pkg_malloc(tmp.len + 1);
-	strncpy(remote_ip, media_ip.s, media_ip.len);
-	remote_ip[media_ip.len] = '\0';
-	LM_INFO("remote media IP[%s]\n", remote_ip);
-
-
+	sdp_info->remote_ip = pkg_malloc(tmp.len + 1);
+	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
+	sdp_info->remote_ip[media_ip.len] = '\0';
+	LM_INFO("remote media IP[%s]\n", sdp_info->remote_ip);
+	return 1;
 }
+
+int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+	rms_sdp_info_t sdp_info;
+	if(!rms_get_sdp_info(&sdp_info, msg)) {
+		return -1;
+	}
+	//char * remote_ip;// = str_init("255.255.255.255");
+	RtpProfile *profile = rtp_profile_new("remote");
+	LM_INFO("rtp_profile created: %s\n", profile->name);
+
+ {
+
+ }
 
 // int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
 // 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
