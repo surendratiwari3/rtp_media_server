@@ -1,6 +1,8 @@
 #include "../../sr_module.h"
 #include "../../parser/sdp/sdp_helpr_funcs.h"
 #include "../../parser/parse_content.h"
+#include "../../modules/tm/tm_load.h"
+#include "../../data_lump_rpl.h"
 
 #include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
@@ -19,6 +21,7 @@ static int child_init(int);
 
 static int rtp_media_offer(struct sip_msg *, char *, char *);
 
+struct tm_binds tmb;
 static cmd_export_t cmds[] = {
 	{"rtp_media_offer",(cmd_function)rtp_media_offer,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
@@ -61,6 +64,10 @@ struct module_exports exports = {
  */
 static int mod_init(void) {
 	LM_INFO("RTP media server module init\n");
+	if (load_tm_api(&tmb)!=0) {
+		LM_ERR( "can't load TM API\n");
+		return -1;
+	}
 	return(0);
 }
 
@@ -142,10 +149,39 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		media_ip = sdp_session->ip_addr;
 		//pf = sdp_session->pf;
 	}
-	sdp_info->remote_ip = pkg_malloc(tmp.len + 1);
-	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
-	sdp_info->remote_ip[media_ip.len] = '\0';
-	LM_INFO("remote media IP[%s]\n", sdp_info->remote_ip);
+	//if(media)
+//	sdp_info->remote_ip = pkg_malloc(tmp.len + 1);
+//	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
+//	sdp_info->remote_ip[media_ip.len] = '\0';
+//	LM_INFO("remote media IP[%s]\n", sdp_info->remote_ip);
+	return 1;
+}
+
+static int rms_answer_call(struct sip_msg* msg) {
+	int status = 0;
+	if(msg->REQ_METHOD!=METHOD_INVITE) {
+		LM_INFO("only invite is supported for offer \n");
+		return -1;
+	}
+	LM_INFO("invite processing\n");
+	status = tmb.t_newtran(msg);
+	LM_INFO("invite new transaction[%d]\n", status);
+	if(status < 0) {
+		LM_INFO("error creating transaction \n");
+		return -1;
+	} else if (status == 0) {
+		LM_INFO("retransmission");
+		return 0;
+	}
+	LM_INFO("transaction created\n");
+	char header[255] = "Contact: <sip:rtp_server@127.0.0.2>\n";
+	if (!add_lump_rpl2 (msg, header, strlen(header), LUMP_RPL_HDR)) {
+		LM_ERR ("error adding contact header! [%s]\n", header);
+	}
+	//t_reply_with_body();
+	if(!tmb.t_reply(msg,200,"OK")) {
+		LM_INFO("t_reply error");
+	}
 	return 1;
 }
 
@@ -158,9 +194,9 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	RtpProfile *profile = rtp_profile_new("remote");
 	LM_INFO("rtp_profile created: %s\n", profile->name);
 
- {
-
- }
+	if(!rms_answer_call(msg)) {
+		return -1;
+	}
 
 // int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
 // 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
