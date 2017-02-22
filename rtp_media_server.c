@@ -104,6 +104,17 @@ typedef struct rms_sdp_info {
 	char * remote_ip;
 } rms_sdp_info_t;
 
+const char *reply_body =
+"v=0\r\n"
+"s=Talk\r\n"
+"c=IN IP4 127.0.0.2\r\n"
+"t=0 0\r\n"
+"m=audio 49170 RTP/AVP 0 8 96\r\n"
+"a=rtpmap:0 PCMU/8000\r\n"
+"a=rtpmap:8 PCMA/8000\r\n"
+"a=rtpmap:96 opus/48000/2\r\n"
+"a=fmtp:96 useinbandfec=1\r\n";
+
 
 static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	str tmp;
@@ -149,16 +160,16 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		media_ip = sdp_session->ip_addr;
 		//pf = sdp_session->pf;
 	}
-	//if(media)
-//	sdp_info->remote_ip = pkg_malloc(tmp.len + 1);
-//	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
-//	sdp_info->remote_ip[media_ip.len] = '\0';
-//	LM_INFO("remote media IP[%s]\n", sdp_info->remote_ip);
 	return 1;
 }
 
 static int rms_answer_call(struct sip_msg* msg) {
 	int status = 0;
+	str r_body;
+	str reason;
+	str to_tag;
+	str contact_hdr;
+
 	if(msg->REQ_METHOD!=METHOD_INVITE) {
 		LM_INFO("only invite is supported for offer \n");
 		return -1;
@@ -174,12 +185,15 @@ static int rms_answer_call(struct sip_msg* msg) {
 		return 0;
 	}
 	LM_INFO("transaction created\n");
-	char header[255] = "Contact: <sip:rtp_server@127.0.0.2>\n";
-	if (!add_lump_rpl2 (msg, header, strlen(header), LUMP_RPL_HDR)) {
-		LM_ERR ("error adding contact header! [%s]\n", header);
-	}
-	//t_reply_with_body();
-	if(!tmb.t_reply(msg,200,"OK")) {
+	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\n");
+	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\n");
+	r_body.s = strdup(reply_body);
+	r_body.len = strlen(reply_body);
+	reason.s = strdup("OK");
+	reason.len = strlen("OK");
+	to_tag.s = strdup("faketotag");
+	to_tag.len = strlen("faketotag");
+	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&r_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
 	return 1;
