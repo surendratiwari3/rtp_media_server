@@ -10,6 +10,8 @@
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
 // http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
 //
+#define CRLF "\r\n"
+#define CRLF_LEN (sizeof(CRLF) - 1)
 
 MODULE_VERSION
 
@@ -104,17 +106,26 @@ typedef struct rms_sdp_info {
 	char * remote_ip;
 } rms_sdp_info_t;
 
+
 const char *reply_body =
 "v=0\r\n"
-"s=Talk\r\n"
+"o=- 1028316687 1 IN IP4 127.0.0.2\r\n"
+"s=-\r\n"
 "c=IN IP4 127.0.0.2\r\n"
 "t=0 0\r\n"
-"m=audio 49170 RTP/AVP 0 8 96\r\n"
-"a=rtpmap:0 PCMU/8000\r\n"
-"a=rtpmap:8 PCMA/8000\r\n"
-"a=rtpmap:96 opus/48000/2\r\n"
-"a=fmtp:96 useinbandfec=1\r\n";
+"m=audio 49170 RTP/AVP 0 101\r\n";
+//"a=rtpmap:101 telephone-event/8000\r\n"
+//"a=fmtp:101 0-15\r\n";
 
+//"v=0\r\n"
+//"s=Talk\r\n"
+//"c=IN IP4 127.0.0.2\r\n"
+//"t=0 0\r\n"
+//"m=audio 49170 RTP/AVP 0 8 96\r\n"
+//"a=rtpmap:0 PCMU/8000\r\n"
+//"a=rtpmap:8 PCMA/8000\r\n"
+//"a=rtpmap:96 opus/48000/2\r\n"
+//"a=fmtp:96 useinbandfec=1\r\n";
 
 static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	str tmp;
@@ -185,8 +196,8 @@ static int rms_answer_call(struct sip_msg* msg) {
 		return 0;
 	}
 	LM_INFO("transaction created\n");
-	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\n");
-	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\n");
+	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
+	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
 	r_body.s = strdup(reply_body);
 	r_body.len = strlen(reply_body);
 	reason.s = strdup("OK");
