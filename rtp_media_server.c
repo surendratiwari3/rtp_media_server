@@ -104,8 +104,13 @@ static int child_init(int rank) {
 
 typedef struct rms_sdp_info {
 	char * remote_ip;
+	char * payloads;
 } rms_sdp_info_t;
 
+static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
+	sdp_info->remote_ip=NULL;
+	sdp_info->payloads=NULL;
+}
 
 const char *reply_body =
 "v=0\r\n"
@@ -128,7 +133,6 @@ const char *reply_body =
 //"a=fmtp:96 useinbandfec=1\r\n";
 
 static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
-	str tmp;
 	sdp_session_cell_t* sdp_session;
 	sdp_stream_cell_t* sdp_stream;
 	str media_ip;
@@ -158,10 +162,9 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 			LM_INFO("can not get the sdp stream\n");
 			return -1;
 		} else {
-			char *payloads=pkg_malloc(sdp_stream->payloads.len+1);
-			strncpy(payloads,sdp_stream->payloads.s,sdp_stream->payloads.len);
-			payloads[sdp_stream->payloads.len]='\0';
-			LM_INFO("payloads_num[%d] payload[%s]\n", sdp_stream->payloads_num, payloads);
+			sdp_info->payloads=pkg_malloc(sdp_stream->payloads.len+1);
+			strncpy(sdp_info->payloads,sdp_stream->payloads.s,sdp_stream->payloads.len);
+			sdp_info->payloads[sdp_stream->payloads.len]='\0';
 		}
 	}
 	if (sdp_stream->ip_addr.s && sdp_stream->ip_addr.len>0) {
@@ -171,6 +174,9 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		media_ip = sdp_session->ip_addr;
 		//pf = sdp_session->pf;
 	}
+	sdp_info->remote_ip=pkg_malloc(media_ip.len+1);
+	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
+	sdp_info->remote_ip[media_ip.len]='\0';
 	return 1;
 }
 
@@ -212,13 +218,22 @@ static int rms_answer_call(struct sip_msg* msg) {
 
 int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_sdp_info_t sdp_info;
+	rms_sdp_info_init(&sdp_info);
 	if(!rms_get_sdp_info(&sdp_info, msg)) {
 		return -1;
 	}
-	//char * remote_ip;// = str_init("255.255.255.255");
 	RtpProfile *profile = rtp_profile_new("remote");
 	LM_INFO("rtp_profile created: %s\n", profile->name);
-
+	if(sdp_info.remote_ip) {
+		LM_INFO("remote ip[%s]", sdp_info.remote_ip);
+		pkg_free(sdp_info.remote_ip);
+		sdp_info.remote_ip=NULL;
+	}
+	if(sdp_info.payloads) {
+		LM_INFO("payloads[%s]", sdp_info.payloads);
+		pkg_free(sdp_info.payloads);
+		sdp_info.payloads=NULL;
+	}
 	if(!rms_answer_call(msg)) {
 		return -1;
 	}
@@ -228,8 +243,6 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 // {
 // 	return audio_stream_start_full(stream,prof,remip,remport,remip,rem_rtcp_port,pt,jitt_comp,infile,outfile,NULL,NULL,FALSE);
 // }
-
-	
 
  /*
   * int audio_stream_start_from_io(AudioStream *stream
