@@ -105,11 +105,28 @@ static int child_init(int rank) {
 typedef struct rms_sdp_info {
 	char * remote_ip;
 	char * payloads;
+	char * remote_port;
 } rms_sdp_info_t;
 
 static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_ip=NULL;
+	sdp_info->remote_port=NULL;
 	sdp_info->payloads=NULL;
+}
+
+static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
+	if(sdp_info->remote_ip) {
+		pkg_free(sdp_info->remote_ip);
+		sdp_info->remote_ip = NULL;
+	}
+	if(sdp_info->remote_port) {
+		pkg_free(sdp_info->remote_port);
+		sdp_info->remote_port = NULL;
+	}
+	if(sdp_info->payloads) {
+		pkg_free(sdp_info->payloads);
+		sdp_info->payloads = NULL;
+	}
 }
 
 const char *reply_body =
@@ -135,7 +152,7 @@ const char *reply_body =
 static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	sdp_session_cell_t* sdp_session;
 	sdp_stream_cell_t* sdp_stream;
-	str media_ip;
+	str media_ip, media_port;
 	int sdp_session_num = 0;
 	int sdp_stream_num = get_sdp_stream_num(msg);
 	if(parse_sdp(msg) < 0) {
@@ -172,11 +189,17 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		//pf = sdp_stream->pf;
 	} else {
 		media_ip = sdp_session->ip_addr;
+
 		//pf = sdp_session->pf;
 	}
 	sdp_info->remote_ip=pkg_malloc(media_ip.len+1);
 	strncpy(sdp_info->remote_ip, media_ip.s, media_ip.len);
 	sdp_info->remote_ip[media_ip.len]='\0';
+
+	media_port = sdp_stream->port;
+	sdp_info->remote_port=pkg_malloc(media_port.len+1);
+	strncpy(sdp_info->remote_port, media_port.s, media_port.len);
+	sdp_info->remote_port[media_port.len]='\0';
 	return 1;
 }
 
@@ -224,16 +247,12 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	}
 	RtpProfile *profile = rtp_profile_new("remote");
 	LM_INFO("rtp_profile created: %s\n", profile->name);
-	if(sdp_info.remote_ip) {
-		LM_INFO("remote ip[%s]", sdp_info.remote_ip);
-		pkg_free(sdp_info.remote_ip);
-		sdp_info.remote_ip=NULL;
-	}
-	if(sdp_info.payloads) {
-		LM_INFO("payloads[%s]", sdp_info.payloads);
-		pkg_free(sdp_info.payloads);
-		sdp_info.payloads=NULL;
-	}
+
+	LM_INFO("remote ip[%s]", sdp_info.remote_ip);
+	LM_INFO("remote port[%s]", sdp_info.remote_port);
+	LM_INFO("payloads[%s]", sdp_info.payloads);
+	rms_sdp_info_free(&sdp_info);
+
 	if(!rms_answer_call(msg)) {
 		return -1;
 	}
