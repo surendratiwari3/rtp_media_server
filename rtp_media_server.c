@@ -1,15 +1,39 @@
+/*
+ * Copyright (C) 2017 Julien Chavanton jchavanton@gmail.com
+ *
+ * This file is part of Kamailio, a free SIP server.
+ *
+ * Kamailio is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version
+ *
+ * Kamailio is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+
+
 #include "../../sr_module.h"
 #include "../../parser/sdp/sdp_helpr_funcs.h"
 #include "../../parser/parse_content.h"
 #include "../../modules/tm/tm_load.h"
 #include "../../data_lump_rpl.h"
+#include "../../clist.h"
 
 #include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
 
+#include "rtp_media_server.h"
+
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
 // http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
-//
+
 #define CRLF "\r\n"
 #define CRLF_LEN (sizeof(CRLF) - 1)
 
@@ -22,10 +46,12 @@ static void mod_destroy(void);
 static int child_init(int);
 
 static int rtp_media_offer(struct sip_msg *, char *, char *);
-
+static int rms_sessions_dump(struct sip_msg *, char *, char *);
 struct tm_binds tmb;
+
 static cmd_export_t cmds[] = {
 	{"rtp_media_offer",(cmd_function)rtp_media_offer,0,0,0,ANY_ROUTE },
+	{"rms_sessions_dump",(cmd_function)rms_sessions_dump,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
 };
 
@@ -60,13 +86,15 @@ struct module_exports exports = {
 	child_init
 };
 
+static rms_session_info_t rms_session_list;
+
 /**
  * @return 0 to continue to load the OpenSER, -1 to stop the loading
  * and abort OpenSER.
  */
 static int mod_init(void) {
 	LM_INFO("RTP media server module init\n");
-
+	clist_init(&rms_session_list,next,prev);
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
@@ -104,18 +132,10 @@ void rms_signal_handler(int signum) {
  */
 static int child_init(int rank) {
 	ortp_init();
-	//ms_init();
 	signal(SIGINT,rms_signal_handler);
 	int rtn = 0;
 	return(rtn);
 }
-
-typedef struct rms_sdp_info {
-	char * remote_ip;
-	char * payloads;
-	char * remote_port;
-	int ipv6;
-} rms_sdp_info_t;
 
 static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_ip=NULL;
@@ -248,17 +268,35 @@ static int rms_answer_call(struct sip_msg* msg) {
 	return 1;
 }
 
+rms_session_info_t *rms_session_new() {
+	rms_session_info_t *si = shm_malloc(sizeof(rms_session_info_t));
+	rms_sdp_info_init(&si->sdp_info);
+	// clist_append(head, c, next, prev);
+	clist_append(&rms_session_list,si,next,prev);
+	return si;
+}
+
+int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
+	int x=1;
+	rms_session_info_t *si;
+	clist_foreach(&rms_session_list, si, next){
+		LM_INFO("[%d] session_id[%s]", x, si->session_id);
+		x++;
+	}
+	return 1;
+}
 
 int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
-	rms_sdp_info_t sdp_info;
-	rms_sdp_info_init(&sdp_info);
-	if(!rms_get_sdp_info(&sdp_info, msg)) {
+	rms_session_info_t *si = rms_session_new();
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+
+	if(!rms_get_sdp_info(sdp_info, msg)) {
 		return -1;
 	}
 
-	LM_INFO("remote ip[%s]", sdp_info.remote_ip);
-	LM_INFO("remote port[%s]", sdp_info.remote_port);
-	LM_INFO("payloads[%s]", sdp_info.payloads);
+	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
+	LM_INFO("remote port[%s]", sdp_info->remote_port);
+	LM_INFO("payloads[%s]", sdp_info->payloads);
 { //stat stream oRTP/src/tests/rtprecv.c
 
 	//ortp_scheduler_init();
@@ -306,7 +344,7 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 //	int flags;
 //	void *user_data;
 //
-	AudioStream *audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info.ipv6);
+	AudioStream *audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info->ipv6);
 	int pt_idx = 0;
 	if(audio_stream) {
 		LM_INFO("ms audio_stream created\n");
@@ -320,12 +358,13 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	const char *outfile = NULL;
 	audio_stream_start_with_files(audio_stream,
                                       rtp_profile,
-                                      sdp_info.remote_ip,
-                                      (int)atoi(sdp_info.remote_port),
-                                      (int)(atoi(sdp_info.remote_port)+1),
+                                      sdp_info->remote_ip,
+                                      (int)atoi(sdp_info->remote_port),
+                                      (int)(atoi(sdp_info->remote_port)+1),
                                       pt_idx, 60, infile, outfile);
 }
-	rms_sdp_info_free(&sdp_info);
+	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
+	rms_sdp_info_free(sdp_info);
 
 	if(!rms_answer_call(msg)) {
 		return -1;
