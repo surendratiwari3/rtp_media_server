@@ -66,6 +66,7 @@ struct module_exports exports = {
  */
 static int mod_init(void) {
 	LM_INFO("RTP media server module init\n");
+
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
@@ -82,6 +83,11 @@ static void mod_destroy() {
 	return;
 }
 
+void rms_signal_handler(int signum) {
+	LM_INFO("signal received [%d]\n", signum);
+}
+
+
 /**
  * The rank will be o for the main process calling this function,
  * or 1 through n for each listener process. The rank can have a negative
@@ -97,21 +103,25 @@ static void mod_destroy() {
  * stop.
  */
 static int child_init(int rank) {
+	ortp_init();
+	//ms_init();
+	signal(SIGINT,rms_signal_handler);
 	int rtn = 0;
 	return(rtn);
 }
-
 
 typedef struct rms_sdp_info {
 	char * remote_ip;
 	char * payloads;
 	char * remote_port;
+	int ipv6;
 } rms_sdp_info_t;
 
 static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_ip=NULL;
 	sdp_info->remote_port=NULL;
 	sdp_info->payloads=NULL;
+	sdp_info->ipv6=0;
 }
 
 static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
@@ -189,7 +199,6 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		//pf = sdp_stream->pf;
 	} else {
 		media_ip = sdp_session->ip_addr;
-
 		//pf = sdp_session->pf;
 	}
 	sdp_info->remote_ip=pkg_malloc(media_ip.len+1);
@@ -239,18 +248,83 @@ static int rms_answer_call(struct sip_msg* msg) {
 	return 1;
 }
 
+
 int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_sdp_info_t sdp_info;
 	rms_sdp_info_init(&sdp_info);
 	if(!rms_get_sdp_info(&sdp_info, msg)) {
 		return -1;
 	}
-	RtpProfile *profile = rtp_profile_new("remote");
-	LM_INFO("rtp_profile created: %s\n", profile->name);
 
 	LM_INFO("remote ip[%s]", sdp_info.remote_ip);
 	LM_INFO("remote port[%s]", sdp_info.remote_port);
 	LM_INFO("payloads[%s]", sdp_info.payloads);
+{ //stat stream oRTP/src/tests/rtprecv.c
+
+	//ortp_scheduler_init();
+	//signal(SIGINT,rms_signal_handler);
+	const char * log_fn = "/tmp/ortp.log";
+	FILE * log_file =  fopen (log_fn, "w+");
+	if (log_file) {
+		LM_INFO("ortp logs are redirected [%s]\n", log_fn);
+	} else {
+		log_file = stdout;
+		LM_INFO("ortp can not open logs file [%s]\n", log_fn);
+	}
+	ortp_set_log_file(log_file);
+	ortp_set_log_level_mask(NULL, ORTP_MESSAGE|ORTP_WARNING|ORTP_ERROR|ORTP_FATAL);
+	int local_port=50000;
+	MSFactory *ms_factory = ms_factory_new_with_voip(); // ms_factory_new();
+	PayloadType *pt = payload_type_new();
+
+	pt->clock_rate=8000;
+	pt->mime_type=strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
+	pt->channels=1;
+
+	if (ms_factory) {
+		LM_INFO("ms_factory->mtu[%d]", ms_factory->mtu);
+	}
+
+//	number=payload_type_get_number(pt);
+//	if (rtp_profile_get_payload(prof,number)!=NULL){
+//		ms_warning("A payload type with number %i already exists in profile !",number);
+//	}else
+//		rtp_profile_set_payload(prof,number,pt);
+
+
+//	int type; /**< one of PAYLOAD_* macros*/
+//	int clock_rate; /**< rtp clock rate*/
+//	char bits_per_sample;	/* in case of continuous audio data */
+//	char *zero_pattern;
+//	int pattern_length;
+//	int normal_bitrate;	/*in bit/s */
+//	char *mime_type; /**<actually the submime, ex: pcm, pcma, gsm*/
+//	int channels; /**< number of channels of audio */
+//	char *recv_fmtp; /* various format parameters for the incoming stream */
+//	char *send_fmtp; /* various format parameters for the outgoing stream */
+//	struct _PayloadTypeAvpfParams avpf; /* AVPF parameters */
+//	int flags;
+//	void *user_data;
+//
+	AudioStream *audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info.ipv6);
+	int pt_idx = 0;
+	if(audio_stream) {
+		LM_INFO("ms audio_stream created\n");
+	}
+	RtpProfile *rtp_profile = rtp_profile_new("remote");
+	if(rtp_profile) {
+		rtp_profile_set_payload(rtp_profile, pt_idx, pt);
+		LM_INFO("rtp_profile created: %s\n", rtp_profile->name);
+	}
+	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
+	const char *outfile = NULL;
+	audio_stream_start_with_files(audio_stream,
+                                      rtp_profile,
+                                      sdp_info.remote_ip,
+                                      (int)atoi(sdp_info.remote_port),
+                                      (int)(atoi(sdp_info.remote_port)+1),
+                                      pt_idx, 60, infile, outfile);
+}
 	rms_sdp_info_free(&sdp_info);
 
 	if(!rms_answer_call(msg)) {
