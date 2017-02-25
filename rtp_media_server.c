@@ -291,7 +291,9 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
 	if(!si)
 		return 1;
-
+	audio_stream_stop(si->ms.audio_stream);
+	rtp_profile_destroy(si->ms.rtp_profile);
+	payload_type_destroy(si->ms.pt);
 	LM_INFO("session found [%s] stopping\n", si->session_id);
 	rms_session_free(si);
 	if(!tmb.t_reply(msg,200,"OK")) {
