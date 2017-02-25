@@ -18,39 +18,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-
-#include "../../sr_module.h"
-#include "../../parser/sdp/sdp_helpr_funcs.h"
-#include "../../parser/parse_content.h"
-#include "../../modules/tm/tm_load.h"
-#include "../../data_lump_rpl.h"
-#include "../../clist.h"
-
-#include <mediastreamer2/mediastream.h>
-#include <ortp/ortp.h>
-
 #include "rtp_media_server.h"
 
-// https://www.kamailio.org/dokuwiki/doku.php/development:write-module
-// http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
-
-#define CRLF "\r\n"
-#define CRLF_LEN (sizeof(CRLF) - 1)
-
 MODULE_VERSION
-
-/* Module */
 
 static int mod_init(void);
 static void mod_destroy(void);
 static int child_init(int);
 
-static int rtp_media_offer(struct sip_msg *, char *, char *);
-static int rms_sessions_dump(struct sip_msg *, char *, char *);
-struct tm_binds tmb;
+static rms_session_info_t rms_session_list;
+static MSFactory *ms_factory;
 
 static cmd_export_t cmds[] = {
-	{"rtp_media_offer",(cmd_function)rtp_media_offer,0,0,0,ANY_ROUTE },
+	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
+	{"rms_media_stop",(cmd_function)rms_media_stop,0,0,0,ANY_ROUTE },
 	{"rms_sessions_dump",(cmd_function)rms_sessions_dump,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
 };
@@ -86,8 +67,6 @@ struct module_exports exports = {
 	child_init
 };
 
-static rms_session_info_t rms_session_list;
-
 /**
  * @return 0 to continue to load the OpenSER, -1 to stop the loading
  * and abort OpenSER.
@@ -95,6 +74,7 @@ static rms_session_info_t rms_session_list;
 static int mod_init(void) {
 	LM_INFO("RTP media server module init\n");
 	clist_init(&rms_session_list,next,prev);
+	ms_factory = ms_factory_new_with_voip();
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
@@ -271,9 +251,25 @@ static int rms_answer_call(struct sip_msg* msg) {
 rms_session_info_t *rms_session_new() {
 	rms_session_info_t *si = shm_malloc(sizeof(rms_session_info_t));
 	rms_sdp_info_init(&si->sdp_info);
-	// clist_append(head, c, next, prev);
 	clist_append(&rms_session_list,si,next,prev);
 	return si;
+}
+
+int rms_session_free(rms_session_info_t *si) {
+	clist_rm(si,next,prev);
+	rms_sdp_info_free(&si->sdp_info);
+	shm_free(si);
+	si = NULL;
+	return 1;
+}
+
+rms_session_info_t * rms_session_search(char *callid, int len) {
+	rms_session_info_t *si;
+	clist_foreach(&rms_session_list, si, next){
+		if (strncmp(callid, si->session_id, len) == 0)
+			return si;
+	}
+	return NULL;
 }
 
 int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
@@ -286,8 +282,34 @@ int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
 	return 1;
 }
 
-int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
+	rms_session_info_t *si;
+	if(!msg || !msg->callid || !msg->callid->body.s) {
+		LM_INFO("no callid ?\n");
+		return -1;
+	}
+	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
+	if(!si)
+		return 1;
+
+	LM_INFO("session found [%s] stopping\n", si->session_id);
+	rms_session_free(si);
+	if(!tmb.t_reply(msg,200,"OK")) {
+		return -1;
+	}
+	return 0;
+}
+
+int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+	if(!msg || !msg->callid || !msg->callid->body.s) {
+		LM_INFO("no callid ?\n");
+		return -1;
+	}
+	if(rms_session_search(msg->callid->body.s, msg->callid->body.len))
+		return 1;
+
 	rms_session_info_t *si = rms_session_new();
+	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
 	rms_sdp_info_t *sdp_info = &si->sdp_info;
 
 	if(!rms_get_sdp_info(sdp_info, msg)) {
@@ -297,10 +319,7 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
 	LM_INFO("payloads[%s]", sdp_info->payloads);
-{ //stat stream oRTP/src/tests/rtprecv.c
-
-	//ortp_scheduler_init();
-	//signal(SIGINT,rms_signal_handler);
+{
 	const char * log_fn = "/tmp/ortp.log";
 	FILE * log_file =  fopen (log_fn, "w+");
 	if (log_file) {
@@ -312,7 +331,7 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	ortp_set_log_file(log_file);
 	ortp_set_log_level_mask(NULL, ORTP_MESSAGE|ORTP_WARNING|ORTP_ERROR|ORTP_FATAL);
 	int local_port=50000;
-	MSFactory *ms_factory = ms_factory_new_with_voip(); // ms_factory_new();
+
 	PayloadType *pt = payload_type_new();
 
 	pt->clock_rate=8000;
@@ -323,85 +342,27 @@ int rtp_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("ms_factory->mtu[%d]", ms_factory->mtu);
 	}
 
-//	number=payload_type_get_number(pt);
-//	if (rtp_profile_get_payload(prof,number)!=NULL){
-//		ms_warning("A payload type with number %i already exists in profile !",number);
-//	}else
-//		rtp_profile_set_payload(prof,number,pt);
-
-
-//	int type; /**< one of PAYLOAD_* macros*/
-//	int clock_rate; /**< rtp clock rate*/
-//	char bits_per_sample;	/* in case of continuous audio data */
-//	char *zero_pattern;
-//	int pattern_length;
-//	int normal_bitrate;	/*in bit/s */
-//	char *mime_type; /**<actually the submime, ex: pcm, pcma, gsm*/
-//	int channels; /**< number of channels of audio */
-//	char *recv_fmtp; /* various format parameters for the incoming stream */
-//	char *send_fmtp; /* various format parameters for the outgoing stream */
-//	struct _PayloadTypeAvpfParams avpf; /* AVPF parameters */
-//	int flags;
-//	void *user_data;
-//
-	AudioStream *audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info->ipv6);
+	si->ms.audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info->ipv6);
 	int pt_idx = 0;
-	if(audio_stream) {
+	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");
 	}
-	RtpProfile *rtp_profile = rtp_profile_new("remote");
-	if(rtp_profile) {
-		rtp_profile_set_payload(rtp_profile, pt_idx, pt);
-		LM_INFO("rtp_profile created: %s\n", rtp_profile->name);
+	si->ms.rtp_profile = rtp_profile_new("remote");
+	if(si->ms.rtp_profile) {
+		rtp_profile_set_payload(si->ms.rtp_profile, pt_idx, pt);
+		LM_INFO("rtp_profile created: %s\n", si->ms.rtp_profile->name);
 	}
 	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
 	const char *outfile = NULL;
-	audio_stream_start_with_files(audio_stream,
-                                      rtp_profile,
+	audio_stream_start_with_files(si->ms.audio_stream,
+                                      si->ms.rtp_profile,
                                       sdp_info->remote_ip,
                                       (int)atoi(sdp_info->remote_port),
                                       (int)(atoi(sdp_info->remote_port)+1),
                                       pt_idx, 60, infile, outfile);
 }
-	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
-	rms_sdp_info_free(sdp_info);
-
 	if(!rms_answer_call(msg)) {
 		return -1;
 	}
-
-// int audio_stream_start_with_files(AudioStream *stream, RtpProfile *prof,const char *remip, int remport,
-// 	int rem_rtcp_port, int pt,int jitt_comp, const char *infile, const char * outfile)
-// {
-// 	return audio_stream_start_full(stream,prof,remip,remport,remip,rem_rtcp_port,pt,jitt_comp,infile,outfile,NULL,NULL,FALSE);
-// }
-
- /*
-  * int audio_stream_start_from_io(AudioStream *stream
-  *                                RtpProfile *profile,
-  *                                const char *rem_rtp_ip,
-  *                                int rem_rtp_port,
-                                   const char *rem_rtcp_ip,
-				   int rem_rtcp_port,
-				   int payload,
-				   const MSMediaStreamIO *io) {
- */
-
-/*
- *
-	char *name;
-	PayloadType *payload[RTP_PROFILE_MAX_PAYLOADS];
-int audio_stream_start_full(AudioStream *stream,
-		RtpProfile *profile,
-		const char *rem_rtp_ip,
-		int rem_rtp_port,
-		const char *rem_rtcp_ip,
-		int rem_rtcp_port,
-		int payload,
-		int jitt_comp, const char *infile, const char *outfile,
-		MSSndCard *playcard,
-		MSSndCard *captcard,
-		bool_t use_ec)
-*/
-	return 1;
+	return 0;
 }
