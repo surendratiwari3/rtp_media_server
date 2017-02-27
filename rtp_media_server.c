@@ -79,6 +79,16 @@ static int mod_init(void) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
 	}
+	const char * log_fn = "/tmp/ortp.log";
+	FILE * log_file =  fopen (log_fn, "w+");
+	if (log_file) {
+		LM_INFO("ortp logs are redirected [%s]\n", log_fn);
+	} else {
+		log_file = stdout;
+		LM_INFO("ortp can not open logs file [%s]\n", log_fn);
+	}
+	ortp_set_log_file(log_file);
+	ortp_set_log_level_mask(NULL, ORTP_MESSAGE|ORTP_WARNING|ORTP_ERROR|ORTP_FATAL);
 	return(0);
 }
 
@@ -87,6 +97,7 @@ static int mod_init(void) {
  * resources.
  */
 static void mod_destroy() {
+	ms_factory_destroy(ms_factory);
 	LM_INFO("RTP media server module destroy\n");
 	return;
 }
@@ -122,6 +133,7 @@ static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_port=NULL;
 	sdp_info->payloads=NULL;
 	sdp_info->ipv6=0;
+	sdp_info->reply_body.s=NULL;
 }
 
 static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
@@ -137,27 +149,27 @@ static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 		pkg_free(sdp_info->payloads);
 		sdp_info->payloads = NULL;
 	}
+	if(sdp_info->reply_body.s) {
+		pkg_free(sdp_info->reply_body.s);
+		sdp_info->reply_body.s = NULL;
+		sdp_info->reply_body.len = 0;
+	}
 }
 
-const char *reply_body =
-"v=0\r\n"
-"o=- 1028316687 1 IN IP4 127.0.0.2\r\n"
-"s=-\r\n"
-"c=IN IP4 127.0.0.2\r\n"
-"t=0 0\r\n"
-"m=audio 49170 RTP/AVP 0 101\r\n";
-//"a=rtpmap:101 telephone-event/8000\r\n"
-//"a=fmtp:101 0-15\r\n";
-
-//"v=0\r\n"
-//"s=Talk\r\n"
-//"c=IN IP4 127.0.0.2\r\n"
-//"t=0 0\r\n"
-//"m=audio 49170 RTP/AVP 0 8 96\r\n"
-//"a=rtpmap:0 PCMU/8000\r\n"
-//"a=rtpmap:8 PCMA/8000\r\n"
-//"a=rtpmap:96 opus/48000/2\r\n"
-//"a=fmtp:96 useinbandfec=1\r\n";
+static void set_reply_body(rms_sdp_info_t * sdp_info) {
+	if(sdp_info->reply_body.s)
+		return;
+	str *body = &sdp_info->reply_body;
+	body->len=strlen(sdp_v)+strlen(sdp_o)+strlen(sdp_s);
+	body->len+=strlen(sdp_c)+strlen(sdp_t)+strlen(sdp_m);
+	body->s=pkg_malloc(body->len+1);
+	strcpy(body->s, sdp_v);
+	strcat(body->s, sdp_o);
+	strcat(body->s, sdp_s);
+	strcat(body->s, sdp_c);
+	strcat(body->s, sdp_t);
+	strcat(body->s, sdp_m);
+}
 
 static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	sdp_session_cell_t* sdp_session;
@@ -176,7 +188,7 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	}
 	LM_INFO("sdp body type[%d]\n", sdp->type);
 	if (sdp_stream_num > 1 || !sdp_stream_num) {
-		LM_INFO("only support one stream[%d]\n[%s]\n", sdp_stream_num, get_body(msg));
+		LM_INFO("only support one stream[%d]\n", sdp_stream_num);
 	}
 	sdp_stream_num = 0;
 	sdp_session = get_sdp_session(msg, sdp_session_num);
@@ -212,9 +224,8 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	return 1;
 }
 
-static int rms_answer_call(struct sip_msg* msg) {
+static int rms_answer_call(struct sip_msg* msg, rms_sdp_info_t *sdp_info) {
 	int status = 0;
-	str r_body;
 	str reason;
 	str to_tag;
 	str contact_hdr;
@@ -236,13 +247,12 @@ static int rms_answer_call(struct sip_msg* msg) {
 	LM_INFO("transaction created\n");
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
-	r_body.s = strdup(reply_body);
-	r_body.len = strlen(reply_body);
+	set_reply_body(sdp_info);
 	reason.s = strdup("OK");
 	reason.len = strlen("OK");
 	to_tag.s = strdup("faketotag");
 	to_tag.len = strlen("faketotag");
-	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&r_body,&contact_hdr,&to_tag)) {
+	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->reply_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
 	return 1;
@@ -291,11 +301,13 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
 	if(!si)
 		return 1;
+	LM_INFO("session found [%s] stopping\n", si->session_id);
 	audio_stream_stop(si->ms.audio_stream);
 	rtp_profile_destroy(si->ms.rtp_profile);
-	payload_type_destroy(si->ms.pt);
-	LM_INFO("session found [%s] stopping\n", si->session_id);
+	//payload_type_destroy(si->ms.pt);
+
 	rms_session_free(si);
+	tmb.t_newtran(msg);
 	if(!tmb.t_reply(msg,200,"OK")) {
 		return -1;
 	}
@@ -322,16 +334,7 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
 	LM_INFO("payloads[%s]", sdp_info->payloads);
 {
-	const char * log_fn = "/tmp/ortp.log";
-	FILE * log_file =  fopen (log_fn, "w+");
-	if (log_file) {
-		LM_INFO("ortp logs are redirected [%s]\n", log_fn);
-	} else {
-		log_file = stdout;
-		LM_INFO("ortp can not open logs file [%s]\n", log_fn);
-	}
-	ortp_set_log_file(log_file);
-	ortp_set_log_level_mask(NULL, ORTP_MESSAGE|ORTP_WARNING|ORTP_ERROR|ORTP_FATAL);
+
 	int local_port=50000;
 
 	PayloadType *pt = payload_type_new();
@@ -363,7 +366,7 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
                                       (int)(atoi(sdp_info->remote_port)+1),
                                       pt_idx, 60, infile, outfile);
 }
-	if(!rms_answer_call(msg)) {
+	if(!rms_answer_call(msg, sdp_info)) {
 		return -1;
 	}
 	return 0;
