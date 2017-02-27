@@ -28,6 +28,9 @@ static int child_init(int);
 
 static rms_session_info_t rms_session_list;
 static MSFactory *ms_factory;
+static rms_t rms;
+
+static sdpops_api_t sdp_ops;
 
 static cmd_export_t cmds[] = {
 	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
@@ -73,6 +76,10 @@ struct module_exports exports = {
  */
 static int mod_init(void) {
 	LM_INFO("RTP media server module init\n");
+	rms.udp_start_port = 50000;
+	rms.udp_end_port = 60000;
+	rms.udp_last_port = 50000;
+
 	clist_init(&rms_session_list,next,prev);
 	ms_factory = ms_factory_new_with_voip();
 	if (load_tm_api(&tmb)!=0) {
@@ -159,9 +166,16 @@ static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 static void set_reply_body(rms_sdp_info_t * sdp_info) {
 	if(sdp_info->reply_body.s)
 		return;
+
 	str *body = &sdp_info->reply_body;
 	body->len=strlen(sdp_v)+strlen(sdp_o)+strlen(sdp_s);
-	body->len+=strlen(sdp_c)+strlen(sdp_t)+strlen(sdp_m);
+	body->len+=strlen(sdp_c)+strlen(sdp_t);
+
+	char sdp_m[128];
+	snprintf(sdp_m,128,"m=audio %d RTP/AVP 0 101\r\n",
+                               sdp_info->udp_local_port);
+	body->len+=strlen(sdp_m);
+
 	body->s=pkg_malloc(body->len+1);
 	strcpy(body->s, sdp_v);
 	strcat(body->s, sdp_o);
@@ -314,6 +328,18 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	return 0;
 }
 
+static PayloadType* rms_check_payload(struct sip_msg* msg) {
+	str codec;
+	codec.s = strdup("OPUS");
+	codec.len = strlen("OPUS");
+	if (sdp_ops.sdp_with_codecs_by_id(msg, &codec)) {
+		LM_INFO("OPUS Found\n");
+	} else {
+		LM_INFO("OPUS Found\n");
+	}
+	return NULL;
+}
+
 int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if(!msg || !msg->callid || !msg->callid->body.s) {
 		LM_INFO("no callid ?\n");
@@ -329,14 +355,11 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if(!rms_get_sdp_info(sdp_info, msg)) {
 		return -1;
 	}
-
+	// rms_check_payload(msg);
 	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
 	LM_INFO("payloads[%s]", sdp_info->payloads);
 {
-
-	int local_port=50000;
-
 	PayloadType *pt = payload_type_new();
 
 	pt->clock_rate=8000;
@@ -347,7 +370,14 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("ms_factory->mtu[%d]", ms_factory->mtu);
 	}
 
-	si->ms.audio_stream = audio_stream_new(ms_factory,local_port,local_port+1,sdp_info->ipv6);
+	rms.udp_last_port += 2;
+	if (rms.udp_last_port > rms.udp_end_port)
+		rms.udp_last_port = rms.udp_start_port;
+	sdp_info->udp_local_port = rms.udp_last_port;
+
+	si->ms.audio_stream = audio_stream_new(ms_factory,
+                 sdp_info->udp_local_port,
+		 sdp_info->udp_local_port+1, sdp_info->ipv6);
 	int pt_idx = 0;
 	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");

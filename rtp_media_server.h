@@ -22,6 +22,7 @@
 #include "../../parser/sdp/sdp_helpr_funcs.h"
 #include "../../parser/parse_content.h"
 #include "../../modules/tm/tm_load.h"
+#include "../../modules/sdpops/api.h"
 #include "../../data_lump_rpl.h"
 #include "../../clist.h"
 
@@ -36,6 +37,8 @@ static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
 static int rms_sessions_dump(struct sip_msg *, char *, char *);
 
+static PayloadType* rms_check_payload(struct sip_msg*);
+
 // https://tools.ietf.org/html/rfc4566
 // (protocol version)
 const char *sdp_v = "v=0\r\n";
@@ -47,14 +50,19 @@ const char *sdp_s = "s=-\r\n";
 const char *sdp_c = "c=IN IP4 127.0.0.2\r\n";
 // (time the session is active)
 const char *sdp_t = "t=0 0\r\n";
-// (media name and transport address)
-const char *sdp_m = "m=audio 49170 RTP/AVP 0 101\r\n";
 
 //"a=rtpmap:101 telephone-event/8000\r\n"
 //"a=fmtp:101 0-15\r\n";
 //"a=rtpmap:0 PCMU/8000\r\n"
 //"a=rtpmap:8 PCMA/8000\r\n"
 //"a=rtpmap:96 opus/48000/2\r\n"
+//"a=fmtp:96 useinbandfec=1\r\n";
+
+typedef struct rms {
+	int udp_start_port;
+	int udp_end_port;
+	int udp_last_port;
+} rms_t;
 
 struct tm_binds tmb;
 typedef struct rms_sdp_info {
@@ -63,6 +71,7 @@ typedef struct rms_sdp_info {
 	char * remote_port;
 	int ipv6;
 	str reply_body;
+	int udp_local_port;
 } rms_sdp_info_t;
 
 typedef struct ms_res {
