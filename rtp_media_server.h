@@ -37,7 +37,7 @@ static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
 static int rms_sessions_dump(struct sip_msg *, char *, char *);
 
-static PayloadType* rms_check_payload(struct sip_msg*);
+
 
 // https://tools.ietf.org/html/rfc4566
 // (protocol version)
@@ -70,9 +70,12 @@ typedef struct rms_sdp_info {
 	char * payloads;
 	char * remote_port;
 	int ipv6;
-	str reply_body;
+	str repl_body;
+	str recv_body;
 	int udp_local_port;
 } rms_sdp_info_t;
+
+static PayloadType* rms_check_payload(rms_sdp_info_t *sdp);
 
 typedef struct ms_res {
 	AudioStream *audio_stream;

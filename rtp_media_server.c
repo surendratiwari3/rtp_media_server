@@ -140,7 +140,8 @@ static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_port=NULL;
 	sdp_info->payloads=NULL;
 	sdp_info->ipv6=0;
-	sdp_info->reply_body.s=NULL;
+	sdp_info->repl_body.s=NULL;
+	sdp_info->recv_body.s=NULL;
 }
 
 static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
@@ -156,18 +157,18 @@ static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 		pkg_free(sdp_info->payloads);
 		sdp_info->payloads = NULL;
 	}
-	if(sdp_info->reply_body.s) {
-		pkg_free(sdp_info->reply_body.s);
-		sdp_info->reply_body.s = NULL;
-		sdp_info->reply_body.len = 0;
+	if(sdp_info->repl_body.s) {
+		pkg_free(sdp_info->repl_body.s);
+		sdp_info->repl_body.s = NULL;
+		sdp_info->repl_body.len = 0;
 	}
 }
 
 static void set_reply_body(rms_sdp_info_t * sdp_info) {
-	if(sdp_info->reply_body.s)
+	if(sdp_info->repl_body.s)
 		return;
 
-	str *body = &sdp_info->reply_body;
+	str *body = &sdp_info->repl_body;
 	body->len=strlen(sdp_v)+strlen(sdp_o)+strlen(sdp_s);
 	body->len+=strlen(sdp_c)+strlen(sdp_t);
 
@@ -200,7 +201,11 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 		LM_INFO("sdp null\n");
 		return -1;
 	}
-	LM_INFO("sdp body type[%d]\n", sdp->type);
+	sdp_info->recv_body.s = sdp->text.s;
+	sdp_info->recv_body.len = sdp->text.len;
+
+
+	LM_INFO("sdp body - type[%d]\n", sdp->type);
 	if (sdp_stream_num > 1 || !sdp_stream_num) {
 		LM_INFO("only support one stream[%d]\n", sdp_stream_num);
 	}
@@ -266,7 +271,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_sdp_info_t *sdp_info) {
 	reason.len = strlen("OK");
 	to_tag.s = strdup("faketotag");
 	to_tag.len = strlen("faketotag");
-	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->reply_body,&contact_hdr,&to_tag)) {
+	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->repl_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
 	return 1;
@@ -328,16 +333,17 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	return 0;
 }
 
-static PayloadType* rms_check_payload(struct sip_msg* msg) {
-	str codec;
-	codec.s = strdup("OPUS");
-	codec.len = strlen("OPUS");
-	if (sdp_ops.sdp_with_codecs_by_id(msg, &codec)) {
-		LM_INFO("OPUS Found\n");
-	} else {
-		LM_INFO("OPUS Found\n");
+static PayloadType* rms_check_payload(rms_sdp_info_t *sdp) {
+	char *pos = sdp->recv_body.s;
+	PayloadType *pt=NULL;
+	while ((pos = strstr(pos, "a=rtpmap:"))) {
+		int id;
+		char codec[64];
+		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
+		LM_INFO("[%d][%s]\n", id, codec);
+		pos++;
 	}
-	return NULL;
+	return pt;
 }
 
 int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
@@ -355,10 +361,11 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if(!rms_get_sdp_info(sdp_info, msg)) {
 		return -1;
 	}
-	// rms_check_payload(msg);
+
 	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
 	LM_INFO("payloads[%s]", sdp_info->payloads);
+	rms_check_payload(sdp_info);
 {
 	PayloadType *pt = payload_type_new();
 
