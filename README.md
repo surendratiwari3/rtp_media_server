@@ -1,4 +1,19 @@
 # rtp_media_server
+The RTP media server Kamailio module feature set will be oriented towards :
+
+Transcoding gateway with audio quality reporting
+
+- Support for most freecodecs(Opus, Codec2) and (g729a, g722)
+
+- Audio quality reporting using 
+
+RTP Control Protocol Extended Reports (RTCP XR)
+https://tools.ietf.org/html/rfc3611
+
+Session Initiation Protocol Event Package for Voice Quality Reporting
+https://tools.ietf.org/html/rfc6035
+
+
 
 This module is implementing belledonne communiation media streamer(ms2) and RTP (oRTP) libraries in Kamailio
 Kamailio is doing all the SIP and some SDP related task
@@ -30,4 +45,4 @@ MS2/oRTP is doing all the RTP and media processing
 - implement : minimal IVR feature set : play, record, dtmf, transfer
 - implement : IVR interface to feature : sql, xml, etc ?
 
-t 
+#
