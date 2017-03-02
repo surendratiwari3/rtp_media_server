@@ -14,12 +14,15 @@ https://tools.ietf.org/html/rfc6035
 
 
 # external libraries
-This module is implementing belledonne communiation media streamer(ms2) and RTP (oRTP) libraries in Kamailio
+This module is using belledonne communication media streamer(ms2) and RTP (oRTP) libraries in Kamailio
+
 Kamailio is doing all the SIP and some SDP related task
+
 MS2/oRTP is doing all the RTP and media processing
 
 
 # routing script example
+This is only for initial proof of concept to start an RTP session and playback a file
 ```
         if(is_method("INVITE") && !has_totag()) {
                 xlog("L_INFO","INVITE RECEIVED [$ci]\n");
@@ -43,8 +46,8 @@ MS2/oRTP is doing all the RTP and media processing
 - SDP parsing / payload offer-answer
 - process synchronization
 - Memory leak check refactoring
-- implement : minimal IVR feature set : play, record, dtmf, transfer
-- implement : IVR interface to feature : sql, xml, etc ?
+- implement : transcoding capabilities
+- implement : SIP audio quality reporting
 
 ### transcoding gateway
 
