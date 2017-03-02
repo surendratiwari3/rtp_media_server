@@ -89,4 +89,8 @@ typedef struct rms_session_info {
 	rms_sdp_info_t sdp_info;
 	char * session_id;
 	ms_res_t ms;
+	PayloadType *pt;
 } rms_session_info_t;
+
+
+

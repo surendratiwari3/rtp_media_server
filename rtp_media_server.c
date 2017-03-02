@@ -30,7 +30,7 @@ static rms_session_info_t rms_session_list;
 static MSFactory *ms_factory;
 static rms_t rms;
 
-static sdpops_api_t sdp_ops;
+// static sdpops_api_t sdp_ops;
 
 static cmd_export_t cmds[] = {
 	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
@@ -79,6 +79,8 @@ static int mod_init(void) {
 	rms.udp_start_port = 50000;
 	rms.udp_end_port = 60000;
 	rms.udp_last_port = 50000;
+
+	ortp_init();
 
 	clist_init(&rms_session_list,next,prev);
 	ms_factory = ms_factory_new_with_voip();
@@ -129,7 +131,7 @@ void rms_signal_handler(int signum) {
  * stop.
  */
 static int child_init(int rank) {
-	ortp_init();
+
 	signal(SIGINT,rms_signal_handler);
 	int rtn = 0;
 	return(rtn);
@@ -164,7 +166,7 @@ static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 	}
 }
 
-static void set_reply_body(rms_sdp_info_t * sdp_info) {
+static void set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) {
 	if(sdp_info->repl_body.s)
 		return;
 
@@ -173,8 +175,8 @@ static void set_reply_body(rms_sdp_info_t * sdp_info) {
 	body->len+=strlen(sdp_c)+strlen(sdp_t);
 
 	char sdp_m[128];
-	snprintf(sdp_m,128,"m=audio %d RTP/AVP 0 101\r\n",
-                               sdp_info->udp_local_port);
+	snprintf(sdp_m,128,"m=audio %d RTP/AVP %d\r\n",
+                               sdp_info->udp_local_port, payload_type_number);
 	body->len+=strlen(sdp_m);
 
 	body->s=pkg_malloc(body->len+1);
@@ -243,11 +245,12 @@ static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	return 1;
 }
 
-static int rms_answer_call(struct sip_msg* msg, rms_sdp_info_t *sdp_info) {
+static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	int status = 0;
 	str reason;
 	str to_tag;
 	str contact_hdr;
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
 
 	if(msg->REQ_METHOD!=METHOD_INVITE) {
 		LM_INFO("only invite is supported for offer \n");
@@ -266,7 +269,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_sdp_info_t *sdp_info) {
 	LM_INFO("transaction created\n");
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
-	set_reply_body(sdp_info);
+	set_reply_body(sdp_info, si->pt->type);
 	reason.s = strdup("OK");
 	reason.len = strlen("OK");
 	to_tag.s = strdup("faketotag");
@@ -287,6 +290,8 @@ rms_session_info_t *rms_session_new() {
 int rms_session_free(rms_session_info_t *si) {
 	clist_rm(si,next,prev);
 	rms_sdp_info_free(&si->sdp_info);
+	if(si->pt)
+
 	shm_free(si);
 	si = NULL;
 	return 1;
@@ -333,16 +338,69 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	return 0;
 }
 
-static PayloadType* rms_check_payload(rms_sdp_info_t *sdp) {
-	char *pos = sdp->recv_body.s;
-	PayloadType *pt=NULL;
+static char * rms_sdp_get_rtpmap(str body, int type_number) {
+	char *pos = body.s;
 	while ((pos = strstr(pos, "a=rtpmap:"))) {
 		int id;
 		char codec[64];
 		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
-		LM_INFO("[%d][%s]\n", id, codec);
+		if(id == type_number) {
+			LM_INFO("[%d][%s]\n", id, codec);
+			return strdup(codec);
+		}
 		pos++;
 	}
+	return NULL;
+}
+
+static PayloadType* rms_check_payload(rms_sdp_info_t *sdp) {
+	// https://tools.ietf.org/html/rfc3551
+	LM_INFO("payloads[%s]", sdp->payloads); //0 8
+	PayloadType *pt = payload_type_new();
+	char * payloads = sdp->payloads;
+	char * payload_type_number=strtok(payloads," ");
+	if (!payload_type_number) {
+		payload_type_destroy(pt);
+		return NULL;
+	}
+	pt->type = atoi(payload_type_number);
+	pt->clock_rate=8000;
+	pt->channels=1;
+	pt->mime_type=NULL;
+	while(!pt->mime_type) {
+		if (pt->type > 127) {
+			return NULL;
+		} else if (pt->type >= 96) {
+			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
+			pt->mime_type = strdup(strtok(rtpmap, "/"));
+			if (strcasecmp(pt->mime_type,"opus") == 0) {
+				pt->clock_rate = atoi(strtok(NULL, "/"));
+				pt->channels = atoi(strtok(NULL, "/"));
+				free(rtpmap);
+				return pt;
+			}
+			free(pt->mime_type);
+			pt->mime_type=NULL;
+			free(rtpmap);
+		} else if (pt->type == 0) {
+			pt->mime_type=strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
+		} else if (pt->type == 8) {
+			pt->mime_type=strdup("pcma");
+		} else if (pt->type == 9) {
+			pt->mime_type=strdup("g722");
+		} else if (pt->type == 18) {
+			pt->mime_type=strdup("g729");
+		}
+		if(pt->mime_type)
+			break;
+		payload_type_number=strtok(NULL," ");
+		if (!payload_type_number) {
+			payload_type_destroy(pt);
+			return NULL;
+		}
+		pt->type = atoi(payload_type_number);
+	}
+	LM_INFO("payload_type:%d %s/%d/%d\n", pt->type, pt->mime_type, pt->clock_rate, pt->channels);
 	return pt;
 }
 
@@ -364,19 +422,12 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 
 	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
-	LM_INFO("payloads[%s]", sdp_info->payloads);
-	rms_check_payload(sdp_info);
+
 {
-	PayloadType *pt = payload_type_new();
 
-	pt->clock_rate=8000;
-	pt->mime_type=strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
-	pt->channels=1;
+	si->ms.rtp_profile = rtp_profile_new("remote");
 
-	if (ms_factory) {
-		LM_INFO("ms_factory->mtu[%d]", ms_factory->mtu);
-	}
-
+	// RTP UDP port
 	rms.udp_last_port += 2;
 	if (rms.udp_last_port > rms.udp_end_port)
 		rms.udp_last_port = rms.udp_start_port;
@@ -385,25 +436,36 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	si->ms.audio_stream = audio_stream_new(ms_factory,
                  sdp_info->udp_local_port,
 		 sdp_info->udp_local_port+1, sdp_info->ipv6);
-	int pt_idx = 0;
+
 	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");
 	}
-	si->ms.rtp_profile = rtp_profile_new("remote");
-	if(si->ms.rtp_profile) {
-		rtp_profile_set_payload(si->ms.rtp_profile, pt_idx, pt);
-		LM_INFO("rtp_profile created: %s\n", si->ms.rtp_profile->name);
-	}
+
 	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
 	const char *outfile = NULL;
+
+	si->pt = rms_check_payload(sdp_info);
+
+	if(!pt) {
+		rms_session_free(si);
+		tmb.t_newtran(msg);
+		tmb.t_reply(msg,488,"incompatible media format");
+		return -1;
+	}
+
+	if(si->ms.rtp_profile) {
+		rtp_profile_set_payload(si->ms.rtp_profile, si->pt->type, si->pt);
+		LM_INFO("rtp_profile created: %s\n", si->ms.rtp_profile->name);
+	}
+	//
 	audio_stream_start_with_files(si->ms.audio_stream,
                                       si->ms.rtp_profile,
                                       sdp_info->remote_ip,
                                       (int)atoi(sdp_info->remote_port),
                                       (int)(atoi(sdp_info->remote_port)+1),
-                                      pt_idx, 60, infile, outfile);
+                                      si->pt->type, 60, infile, outfile);
 }
-	if(!rms_answer_call(msg, sdp_info)) {
+	if(!rms_answer_call(msg, si)) {
 		return -1;
 	}
 	return 0;
