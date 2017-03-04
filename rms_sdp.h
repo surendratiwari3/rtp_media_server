@@ -4,7 +4,6 @@
 
 #include "../../sr_module.h"
 
-
 typedef struct rms_sdp_info {
 	char * remote_ip;
 	char * payloads;
@@ -16,5 +15,7 @@ typedef struct rms_sdp_info {
 } rms_sdp_info_t;
 
 void rms_sdp_set_reply_body(rms_sdp_info_t *, int payload_type_number);
+void rms_sdp_info_init(rms_sdp_info_t * sdp_info);
+void rms_sdp_info_free(rms_sdp_info_t * sdp_info);
 
 #endif

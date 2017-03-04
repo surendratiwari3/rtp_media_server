@@ -137,34 +137,7 @@ static int child_init(int rank) {
 	return(rtn);
 }
 
-static void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
-	sdp_info->remote_ip=NULL;
-	sdp_info->remote_port=NULL;
-	sdp_info->payloads=NULL;
-	sdp_info->ipv6=0;
-	sdp_info->repl_body.s=NULL;
-	sdp_info->recv_body.s=NULL;
-}
 
-static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
-	if(sdp_info->remote_ip) {
-		pkg_free(sdp_info->remote_ip);
-		sdp_info->remote_ip = NULL;
-	}
-	if(sdp_info->remote_port) {
-		pkg_free(sdp_info->remote_port);
-		sdp_info->remote_port = NULL;
-	}
-	if(sdp_info->payloads) {
-		pkg_free(sdp_info->payloads);
-		sdp_info->payloads = NULL;
-	}
-	if(sdp_info->repl_body.s) {
-		pkg_free(sdp_info->repl_body.s);
-		sdp_info->repl_body.s = NULL;
-		sdp_info->repl_body.len = 0;
-	}
-}
 
 int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	sdp_session_cell_t* sdp_session;
