@@ -18,6 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#ifndef rms_h
+#define rms_h
+
 #include "../../sr_module.h"
 #include "../../parser/sdp/sdp_helpr_funcs.h"
 #include "../../parser/parse_content.h"
@@ -92,5 +95,4 @@ typedef struct rms_session_info {
 	PayloadType *pt;
 } rms_session_info_t;
 
-
-
+#endif
