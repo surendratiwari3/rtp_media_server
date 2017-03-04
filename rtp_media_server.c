@@ -166,29 +166,7 @@ static void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 	}
 }
 
-static void set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) {
-	if(sdp_info->repl_body.s)
-		return;
-
-	str *body = &sdp_info->repl_body;
-	body->len=strlen(sdp_v)+strlen(sdp_o)+strlen(sdp_s);
-	body->len+=strlen(sdp_c)+strlen(sdp_t);
-
-	char sdp_m[128];
-	snprintf(sdp_m,128,"m=audio %d RTP/AVP %d\r\n",
-                               sdp_info->udp_local_port, payload_type_number);
-	body->len+=strlen(sdp_m);
-
-	body->s=pkg_malloc(body->len+1);
-	strcpy(body->s, sdp_v);
-	strcat(body->s, sdp_o);
-	strcat(body->s, sdp_s);
-	strcat(body->s, sdp_c);
-	strcat(body->s, sdp_t);
-	strcat(body->s, sdp_m);
-}
-
-static int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
+int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	sdp_session_cell_t* sdp_session;
 	sdp_stream_cell_t* sdp_stream;
 	str media_ip, media_port;
@@ -269,7 +247,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	LM_INFO("transaction created\n");
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
-	set_reply_body(sdp_info, si->pt->type);
+	rms_sdp_set_reply_body(sdp_info, si->pt->type);
 	reason.s = strdup("OK");
 	reason.len = strlen("OK");
 	to_tag.s = strdup("faketotag");
