@@ -1,5 +1,6 @@
 #include "rms_sdp.h"
 
+
 // https://tools.ietf.org/html/rfc4566
 // (protocol version)
 const char *sdp_v = "v=0\r\n";
@@ -68,4 +69,70 @@ void rms_sdp_set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) 
 	strcat(body->s, sdp_c);
 	strcat(body->s, sdp_t);
 	strcat(body->s, sdp_m);
+}
+
+static char * rms_sdp_get_rtpmap(str body, int type_number) {
+	char *pos = body.s;
+	while ((pos = strstr(pos, "a=rtpmap:"))) {
+		int id;
+		char codec[64];
+		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
+		if(id == type_number) {
+			LM_INFO("[%d][%s]\n", id, codec);
+			return strdup(codec);
+		}
+		pos++;
+	}
+	return NULL;
+}
+
+PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
+	// https://tools.ietf.org/html/rfc3551
+	LM_INFO("payloads[%s]", sdp->payloads); //0 8
+	PayloadType *pt = payload_type_new();
+	char * payloads = sdp->payloads;
+	char * payload_type_number=strtok(payloads," ");
+	if (!payload_type_number) {
+		payload_type_destroy(pt);
+		return NULL;
+	}
+	pt->type = atoi(payload_type_number);
+	pt->clock_rate=8000;
+	pt->channels=1;
+	pt->mime_type=NULL;
+	while(!pt->mime_type) {
+		if (pt->type > 127) {
+			return NULL;
+		} else if (pt->type >= 96) {
+			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
+			pt->mime_type = strdup(strtok(rtpmap, "/"));
+			if (strcasecmp(pt->mime_type,"opus") == 0) {
+				pt->clock_rate = atoi(strtok(NULL, "/"));
+				pt->channels = atoi(strtok(NULL, "/"));
+				free(rtpmap);
+				return pt;
+			}
+			free(pt->mime_type);
+			pt->mime_type=NULL;
+			free(rtpmap);
+		} else if (pt->type == 0) {
+			pt->mime_type=strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
+		} else if (pt->type == 8) {
+			pt->mime_type=strdup("pcma");
+		} else if (pt->type == 9) {
+			pt->mime_type=strdup("g722");
+		} else if (pt->type == 18) {
+			pt->mime_type=strdup("g729");
+		}
+		if(pt->mime_type)
+			break;
+		payload_type_number=strtok(NULL," ");
+		if (!payload_type_number) {
+			payload_type_destroy(pt);
+			return NULL;
+		}
+		pt->type = atoi(payload_type_number);
+	}
+	LM_INFO("payload_type:%d %s/%d/%d\n", pt->type, pt->mime_type, pt->clock_rate, pt->channels);
+	return pt;
 }

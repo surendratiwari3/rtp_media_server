@@ -42,8 +42,6 @@ static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
 static int rms_sessions_dump(struct sip_msg *, char *, char *);
 
-
-
 typedef struct rms {
 	int udp_start_port;
 	int udp_end_port;
@@ -51,8 +49,6 @@ typedef struct rms {
 } rms_t;
 
 struct tm_binds tmb;
-
-static PayloadType* rms_check_payload(rms_sdp_info_t *sdp);
 
 typedef struct ms_res {
 	AudioStream *audio_stream;
