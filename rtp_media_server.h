@@ -40,6 +40,7 @@
 
 static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
+static int rms_transfer(struct sip_msg *, char *, char *);
 static int rms_sessions_dump(struct sip_msg *, char *, char *);
 
 typedef struct rms {

@@ -34,6 +34,7 @@ static rms_t rms;
 
 static cmd_export_t cmds[] = {
 	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
+	{"rms_transfer",(cmd_function)rms_transfer,0,0,0,ANY_ROUTE },
 	{"rms_media_stop",(cmd_function)rms_media_stop,0,0,0,ANY_ROUTE },
 	{"rms_sessions_dump",(cmd_function)rms_sessions_dump,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
@@ -287,6 +288,18 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	return 0;
 }
 
+static int rms_get_udp_port(void) {
+	// RTP UDP port
+	rms.udp_last_port += 2;
+	if (rms.udp_last_port > rms.udp_end_port)
+		rms.udp_last_port = rms.udp_start_port;
+	return rms.udp_last_port;
+}
+
+int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
+	return 1;
+}
+
 int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if(!msg || !msg->callid || !msg->callid->body.s) {
 		LM_INFO("no callid ?\n");
@@ -305,28 +318,17 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 
 	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
 	LM_INFO("remote port[%s]", sdp_info->remote_port);
-
 {
-
 	si->ms.rtp_profile = rtp_profile_new("remote");
-
-	// RTP UDP port
-	rms.udp_last_port += 2;
-	if (rms.udp_last_port > rms.udp_end_port)
-		rms.udp_last_port = rms.udp_start_port;
-	sdp_info->udp_local_port = rms.udp_last_port;
-
+	sdp_info->udp_local_port = rms_get_udp_port();
 	si->ms.audio_stream = audio_stream_new(ms_factory,
                  sdp_info->udp_local_port,
 		 sdp_info->udp_local_port+1, sdp_info->ipv6);
-
 	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");
 	}
-
 	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
 	const char *outfile = NULL;
-
 	si->pt = rms_sdp_check_payload(sdp_info);
 
 	if(!pt) {
