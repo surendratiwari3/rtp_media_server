@@ -225,7 +225,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	LM_INFO("transaction created\n");
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.200>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.200>\r\nContent-Type: application/sdp\r\n");
-	rms_sdp_set_reply_body(sdp_info, si->pt->type);
+	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
 	reason.s = strdup("OK");
 	reason.len = strlen("OK");
 	to_tag.s = strdup("faketotag");
@@ -236,30 +236,64 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	return 1;
 }
 
-rms_session_info_t *rms_session_new() {
-	rms_session_info_t *si = shm_malloc(sizeof(rms_session_info_t));
-	rms_sdp_info_init(&si->sdp_info);
-	clist_append(&rms_session_list,si,next,prev);
-	return si;
-}
-
-int rms_session_free(rms_session_info_t *si) {
-	clist_rm(si,next,prev);
-	rms_sdp_info_free(&si->sdp_info);
-	if(si->pt)
-
-	shm_free(si);
-	si = NULL;
-	return 1;
-}
-
-rms_session_info_t * rms_session_search(char *callid, int len) {
+static rms_session_info_t * rms_session_search(char *callid, int len) {
 	rms_session_info_t *si;
 	clist_foreach(&rms_session_list, si, next){
 		if (strncmp(callid, si->session_id, len) == 0)
 			return si;
 	}
 	return NULL;
+}
+
+static int rms_check_msg(struct sip_msg* msg) {
+	if(!msg || !msg->callid || !msg->callid->body.s) {
+		LM_INFO("no callid ?\n");
+		return -1;
+	}
+	if(rms_session_search(msg->callid->body.s, msg->callid->body.len))
+		return -1;
+	return 1;
+}
+
+int rms_session_free(rms_session_info_t *si) {
+	clist_rm(si,next,prev);
+	rms_sdp_info_free(&si->sdp_info);
+	if (si->caller_media.pt) {
+		payload_type_destroy(si->caller_media.pt);
+		si->caller_media.pt = NULL;
+	}
+	if (si->callee_media.pt) {
+		payload_type_destroy(si->callee_media.pt);
+		si->callee_media.pt = NULL;
+	}
+	if (si->session_id)
+		free(si->session_id);
+
+	shm_free(si);
+	si = NULL;
+	return 1;
+}
+
+rms_session_info_t *rms_session_new(struct sip_msg* msg) {
+	if(!rms_check_msg(msg))
+		return NULL;
+	rms_session_info_t *si = shm_malloc(sizeof(rms_session_info_t));
+	rms_sdp_info_init(&si->sdp_info);
+	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	if(!rms_get_sdp_info(sdp_info, msg)) {
+		rms_session_free(si);
+		return NULL;
+	}
+	si->caller_media.pt = rms_sdp_check_payload(sdp_info);
+	if(!si->caller_media.pt) {
+		rms_session_free(si);
+		tmb.t_newtran(msg);
+		tmb.t_reply(msg,488,"incompatible media format");
+		return NULL;
+	}
+	clist_append(&rms_session_list,si,next,prev);
+	return si;
 }
 
 int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
@@ -302,90 +336,53 @@ static int rms_get_udp_port(void) {
 	return rms.udp_last_port;
 }
 
+int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_media_t *m) {
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	m->local_port = rms_get_udp_port();
+	m->local_ip = rms.local_ip;
+	m->remote_port = atoi(sdp_info->remote_port);
+	m->remote_ip = sdp_info->remote_ip;
 
-static int rms_check_msg(struct sip_msg* msg) {
-	if(!msg || !msg->callid || !msg->callid->body.s) {
-		LM_INFO("no callid ?\n");
-		return -1;
-	}
-	if(rms_session_search(msg->callid->body.s, msg->callid->body.len))
-		return -1;
+	LM_INFO("remote_socket[%s:%s] local_socket[%s:%d] pt[%s]", sdp_info->remote_ip, sdp_info->remote_port,
+		rms.local_ip, sdp_info->udp_local_port, si->caller_media.pt->mime_type);
+	create_call_leg_media(m);
 	return 1;
 }
 
 int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
-	if(!rms_check_msg(msg)) {
-		return -1;
-	}
 	if(!rms_relay_call(msg)) {
 		return -1;
 	}
-	rms_session_info_t *si = rms_session_new();
-	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
-	if(!rms_get_sdp_info(sdp_info, msg)) {
+	rms_session_info_t *si = rms_session_new(msg);
+	if(!rms_create_call_leg(msg, si, &si->caller_media))
 		return -1;
-	}
-	si->caller_media.pt = rms_sdp_check_payload(sdp_info);
-	if(!si->caller_media.pt) {
-		rms_session_free(si);
-		tmb.t_newtran(msg);
-		tmb.t_reply(msg,488,"incompatible media format");
-		return -1;
-	}
-	si->caller_media.local_port = rms_get_udp_port();
-	si->caller_media.local_ip = rms.local_ip;
-	si->caller_media.remote_port = atoi(sdp_info->remote_port);
-	si->caller_media.remote_ip = sdp_info->remote_ip;
-
-	LM_INFO("remote_socket[%s:%s] local_socket[%s:%d] pt[%s]", sdp_info->remote_ip, sdp_info->remote_port,
-		rms.local_ip, sdp_info->udp_local_port, si->caller_media.pt->mime_type);
-	create_call_leg_media(&si->caller_media);
 	return 1;
 }
 
 int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
-	if(!rms_check_msg(msg))
+	rms_session_info_t *si = rms_session_new(msg);
+	if(!rms_create_call_leg(msg, si, &si->caller_media))
 		return -1;
-
-	rms_session_info_t *si = rms_session_new();
-	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
-	if(!rms_get_sdp_info(sdp_info, msg)) {
-		return -1;
-	}
-	LM_INFO("remote ip[%s:%s]", sdp_info->remote_ip, sdp_info->remote_port);
 {
 	si->ms.rtp_profile = rtp_profile_new("remote");
-	sdp_info->udp_local_port = rms_get_udp_port();
 	si->ms.audio_stream = audio_stream_new(rms_get_factory(),
-                 sdp_info->udp_local_port,
-		 sdp_info->udp_local_port+1, sdp_info->ipv6);
+                 si->caller_media.local_port,
+                 si->caller_media.local_port+1, si->sdp_info.ipv6);
 	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");
 	}
 	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
 	const char *outfile = NULL;
-	si->pt = rms_sdp_check_payload(sdp_info);
-
-	if(!si->pt) {
-		rms_session_free(si);
-		tmb.t_newtran(msg);
-		tmb.t_reply(msg,488,"incompatible media format");
-		return -1;
-	}
-
 	if(si->ms.rtp_profile) {
-		rtp_profile_set_payload(si->ms.rtp_profile, si->pt->type, si->pt);
+		rtp_profile_set_payload(si->ms.rtp_profile, si->caller_media.pt->type, si->caller_media.pt);
 		LM_INFO("rtp_profile created: %s\n", si->ms.rtp_profile->name);
 	}
-	//
 	audio_stream_start_with_files(si->ms.audio_stream,
                                       si->ms.rtp_profile,
-                                      sdp_info->remote_ip,
-                                      (int)atoi(sdp_info->remote_port),
-                                      (int)(atoi(sdp_info->remote_port)+1),
-                                      si->pt->type, 60, infile, outfile);
+                                      si->caller_media.remote_ip,
+                                      si->caller_media.remote_port,
+                                      si->caller_media.remote_port+1,
+                                      si->caller_media.pt->type, 60, infile, outfile);
 }
 	if(!rms_answer_call(msg, si)) {
 		return -1;

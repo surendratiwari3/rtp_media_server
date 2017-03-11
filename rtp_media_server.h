@@ -52,7 +52,6 @@ struct tm_binds tmb;
 
 typedef struct ms_res {
 	AudioStream *audio_stream;
-	PayloadType *pt;
 	RtpProfile *rtp_profile;
 } ms_res_t;
 
@@ -62,7 +61,6 @@ typedef struct rms_session_info {
 	rms_sdp_info_t sdp_info;
 	char * session_id;
 	ms_res_t ms;
-	PayloadType *pt;
 	call_leg_media_t caller_media;
 	call_leg_media_t callee_media;
 } rms_session_info_t;
