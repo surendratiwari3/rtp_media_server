@@ -20,6 +20,7 @@
 
 #include "rtp_media_server.h"
 
+
 MODULE_VERSION
 
 static int mod_init(void);
@@ -27,10 +28,8 @@ static void mod_destroy(void);
 static int child_init(int);
 
 static rms_session_info_t rms_session_list;
-static MSFactory *ms_factory;
-static rms_t rms;
 
-// static sdpops_api_t sdp_ops;
+static rms_t rms;
 
 static cmd_export_t cmds[] = {
 	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
@@ -80,11 +79,10 @@ static int mod_init(void) {
 	rms.udp_start_port = 50000;
 	rms.udp_end_port = 60000;
 	rms.udp_last_port = 50000;
-
-	ortp_init();
-
+	rms.local_ip = strdup("127.0.0.200");
 	clist_init(&rms_session_list,next,prev);
-	ms_factory = ms_factory_new_with_voip();
+	rms_media_init();
+
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
@@ -107,7 +105,7 @@ static int mod_init(void) {
  * resources.
  */
 static void mod_destroy() {
-	ms_factory_destroy(ms_factory);
+	rms_media_destroy();
 	LM_INFO("RTP media server module destroy\n");
 	return;
 }
@@ -195,6 +193,14 @@ int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	return 1;
 }
 
+static int rms_relay_call(struct sip_msg* msg) {
+	if(!tmb.t_relay(msg,NULL,NULL)) {
+		LM_INFO("t_ralay error\n");
+		return -1;
+	}
+	return 1;
+}
+
 static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	int status = 0;
 	str reason;
@@ -217,8 +223,8 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 		return 0;
 	}
 	LM_INFO("transaction created\n");
-	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
-	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.2>\r\nContent-Type: application/sdp\r\n");
+	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.200>\r\nContent-Type: application/sdp\r\n");
+	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.200>\r\nContent-Type: application/sdp\r\n");
 	rms_sdp_set_reply_body(sdp_info, si->pt->type);
 	reason.s = strdup("OK");
 	reason.len = strlen("OK");
@@ -296,32 +302,63 @@ static int rms_get_udp_port(void) {
 	return rms.udp_last_port;
 }
 
-int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
-	return 1;
-}
 
-int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+static int rms_check_msg(struct sip_msg* msg) {
 	if(!msg || !msg->callid || !msg->callid->body.s) {
 		LM_INFO("no callid ?\n");
 		return -1;
 	}
 	if(rms_session_search(msg->callid->body.s, msg->callid->body.len))
-		return 1;
+		return -1;
+	return 1;
+}
+
+int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
+	if(!rms_check_msg(msg)) {
+		return -1;
+	}
+	if(!rms_relay_call(msg)) {
+		return -1;
+	}
+	rms_session_info_t *si = rms_session_new();
+	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	if(!rms_get_sdp_info(sdp_info, msg)) {
+		return -1;
+	}
+	si->caller_media.pt = rms_sdp_check_payload(sdp_info);
+	if(!si->caller_media.pt) {
+		rms_session_free(si);
+		tmb.t_newtran(msg);
+		tmb.t_reply(msg,488,"incompatible media format");
+		return -1;
+	}
+	si->caller_media.local_port = rms_get_udp_port();
+	si->caller_media.local_ip = rms.local_ip;
+	si->caller_media.remote_port = atoi(sdp_info->remote_port);
+	si->caller_media.remote_ip = sdp_info->remote_ip;
+
+	LM_INFO("remote_socket[%s:%s] local_socket[%s:%d] pt[%s]", sdp_info->remote_ip, sdp_info->remote_port,
+		rms.local_ip, sdp_info->udp_local_port, si->caller_media.pt->mime_type);
+	create_call_leg_media(&si->caller_media);
+	return 1;
+}
+
+int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
+	if(!rms_check_msg(msg))
+		return -1;
 
 	rms_session_info_t *si = rms_session_new();
 	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
 	rms_sdp_info_t *sdp_info = &si->sdp_info;
-
 	if(!rms_get_sdp_info(sdp_info, msg)) {
 		return -1;
 	}
-
-	LM_INFO("remote ip[%s]", sdp_info->remote_ip);
-	LM_INFO("remote port[%s]", sdp_info->remote_port);
+	LM_INFO("remote ip[%s:%s]", sdp_info->remote_ip, sdp_info->remote_port);
 {
 	si->ms.rtp_profile = rtp_profile_new("remote");
 	sdp_info->udp_local_port = rms_get_udp_port();
-	si->ms.audio_stream = audio_stream_new(ms_factory,
+	si->ms.audio_stream = audio_stream_new(rms_get_factory(),
                  sdp_info->udp_local_port,
 		 sdp_info->udp_local_port+1, sdp_info->ipv6);
 	if(si->ms.audio_stream) {
@@ -331,7 +368,7 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	const char *outfile = NULL;
 	si->pt = rms_sdp_check_payload(sdp_info);
 
-	if(!pt) {
+	if(!si->pt) {
 		rms_session_free(si);
 		tmb.t_newtran(msg);
 		tmb.t_reply(msg,488,"incompatible media format");

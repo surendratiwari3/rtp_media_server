@@ -29,10 +29,8 @@
 #include "../../data_lump_rpl.h"
 #include "../../clist.h"
 
-#include <mediastreamer2/mediastream.h>
-#include <ortp/ortp.h>
-
 #include "rms_sdp.h"
+#include "rms_media.h"
 
 // documentation
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
@@ -47,6 +45,7 @@ typedef struct rms {
 	int udp_start_port;
 	int udp_end_port;
 	int udp_last_port;
+	char *local_ip;
 } rms_t;
 
 struct tm_binds tmb;
@@ -64,6 +63,8 @@ typedef struct rms_session_info {
 	char * session_id;
 	ms_res_t ms;
 	PayloadType *pt;
+	call_leg_media_t caller_media;
+	call_leg_media_t callee_media;
 } rms_session_info_t;
 
 #endif
