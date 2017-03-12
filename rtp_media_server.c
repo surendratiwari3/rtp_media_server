@@ -154,7 +154,6 @@ int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
 	sdp_info->recv_body.s = sdp->text.s;
 	sdp_info->recv_body.len = sdp->text.len;
 
-
 	LM_INFO("sdp body - type[%d]\n", sdp->type);
 	if (sdp_stream_num > 1 || !sdp_stream_num) {
 		LM_INFO("only support one stream[%d]\n", sdp_stream_num);
@@ -318,8 +317,6 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	LM_INFO("session found [%s] stopping\n", si->session_id);
 	audio_stream_stop(si->ms.audio_stream);
 	rtp_profile_destroy(si->ms.rtp_profile);
-	//payload_type_destroy(si->ms.pt);
-
 	rms_session_free(si);
 	tmb.t_newtran(msg);
 	if(!tmb.t_reply(msg,200,"OK")) {
@@ -363,6 +360,9 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
 	if(!rms_create_call_leg(msg, si, &si->caller_media))
 		return -1;
+	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
+	const char *outfile = NULL;
+//	rms_playfile(&si->caller_media, infile);
 {
 	si->ms.rtp_profile = rtp_profile_new("remote");
 	si->ms.audio_stream = audio_stream_new(rms_get_factory(),
@@ -371,8 +371,6 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if(si->ms.audio_stream) {
 		LM_INFO("ms audio_stream created\n");
 	}
-	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
-	const char *outfile = NULL;
 	if(si->ms.rtp_profile) {
 		rtp_profile_set_payload(si->ms.rtp_profile, si->caller_media.pt->type, si->caller_media.pt);
 		LM_INFO("rtp_profile created: %s\n", si->ms.rtp_profile->name);

@@ -28,6 +28,14 @@ int rms_media_init() {
 	return 1;
 }
 
+static MSTicker * rms_create_ticker(char *name) {
+	MSTickerParams params;
+	params.name = name;
+	params.prio = MS_TICKER_PRIO_NORMAL;
+	return ms_ticker_new_with_params(&params);
+}
+//	ms_ticker_destroy(ms_tester_ticker);
+
 void rms_media_destroy() {
 	ms_factory_destroy(ms_factory);
 }
@@ -66,4 +74,31 @@ int create_call_leg_media(call_leg_media_t *m){
 	//ms_ticker_attach_multiple(ms_tester_ticker, ms_tester_voidsource, ms_tester_rtprecv, NULL);
 	return 1;
 }
+
+#define MS_UNUSED(x) ((void)(x))
+static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, void *event_data) {
+	if (event == MS_FILE_PLAYER_EOF) {
+		int *done = (int *)user_data;
+		*done = TRUE;
+	}
+	MS_UNUSED(f), MS_UNUSED(event_data);
+}
+
+int rms_playfile(call_leg_media_t *m, const char* file_name) {
+	MSConnectionHelper h;
+	m->ms_ticker = rms_create_ticker(NULL);
+	ms_filter_add_notify_callback(m->ms_player, rms_player_eof, NULL, TRUE);
+	ms_filter_call_method_noarg(m->ms_player, MS_FILE_PLAYER_START);
+	ms_filter_call_method(m->ms_player, MS_FILE_PLAYER_OPEN, (void *) file_name);
+
+	ms_connection_helper_start(&h);
+	ms_connection_helper_link(&h, m->ms_player, -1, 0);
+	ms_connection_helper_link(&h, m->ms_encoder, 0, 0);
+	ms_connection_helper_link(&h, m->ms_rtpsend, 0, -1);
+
+	ms_ticker_attach(m->ms_ticker, m->ms_player);
+
+	return 1;
+}
+
 

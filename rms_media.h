@@ -23,16 +23,31 @@
 
 #include "mediastreamer2/mediastream.h"
 #include "mediastreamer2/msrtp.h"
-#include <mediastreamer2/mediastream.h>
+#include "mediastreamer2/mediastream.h"
+#include "mediastreamer2/dtmfgen.h"
+#include "mediastreamer2/msfileplayer.h"
+#include "mediastreamer2/msfilerec.h"
+#include "mediastreamer2/msrtp.h"
+#include "mediastreamer2/mstonedetector.h"
+//#include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
+
+#define MS_UNUSED(x) ((void)(x))
 
 typedef struct call_leg_media {
 	RtpSession *rtps;
 	PayloadType *pt;
+	MSTicker *ms_ticker;
 	MSFilter *ms_encoder;
 	MSFilter *ms_decoder;
 	MSFilter *ms_rtprecv;
 	MSFilter *ms_rtpsend;
+	MSFilter *ms_player;
+	MSFilter *ms_recorder;
+	MSFilter *ms_dtmfgen;
+	MSFilter *ms_tonedet;
+	MSFilter *ms_voidsource;
+	MSFilter *ms_voidsink;
 	char* local_ip;
 	int local_port;
 	char* remote_ip;
@@ -42,9 +57,10 @@ typedef struct call_leg_media {
 int create_call_leg_media(call_leg_media_t *m);
 
 int rms_media_init();
-
 void rms_media_destroy();
 
 MSFactory *rms_get_factory();
+
+int rms_playfile(call_leg_media_t *m, const char* file_name);
 
 #endif
