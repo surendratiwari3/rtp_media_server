@@ -35,6 +35,7 @@
 #define MS_UNUSED(x) ((void)(x))
 
 typedef struct call_leg_media {
+	MSFactory *ms_factory;
 	RtpSession *rtps;
 	PayloadType *pt;
 	MSTicker *ms_ticker;
@@ -61,6 +62,7 @@ void rms_media_destroy();
 
 MSFactory *rms_get_factory();
 
+int rms_stop_media(call_leg_media_t *m);
 int rms_playfile(call_leg_media_t *m, const char* file_name);
 
 #endif

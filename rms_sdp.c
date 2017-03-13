@@ -5,11 +5,11 @@
 // (protocol version)
 const char *sdp_v = "v=0\r\n";
 // (originator and session identifier)
-const char *sdp_o = "o=- 1028316687 1 IN IP4 127.0.0.2\r\n";
+const char *sdp_o = "o=- 1028316687 1 IN IP4 127.0.0.101\r\n";
 // (session name)
 const char *sdp_s = "s=-\r\n";
 // (connection information -- not required if included in all media)
-const char *sdp_c = "c=IN IP4 127.0.0.2\r\n";
+const char *sdp_c = "c=IN IP4 127.0.0.101\r\n";
 // (time the session is active)
 const char *sdp_t = "t=0 0\r\n";
 
