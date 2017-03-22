@@ -21,13 +21,14 @@
 #ifndef rms_h
 #define rms_h
 
-#include "../../sr_module.h"
-#include "../../parser/sdp/sdp_helpr_funcs.h"
-#include "../../parser/parse_content.h"
-#include "../../modules/tm/tm_load.h"
-#include "../../modules/sdpops/api.h"
-#include "../../data_lump_rpl.h"
-#include "../../clist.h"
+#include "../../core/sr_module.h"
+#include "../../core/parser/sdp/sdp_helpr_funcs.h"
+#include "../../core/parser/parse_content.h"
+#include "../../core/data_lump_rpl.h"
+#include "../../core/clist.h"
+
+#include "../tm/tm_load.h"
+#include "../sdpops/api.h"
 
 #include "rms_sdp.h"
 #include "rms_media.h"
@@ -59,7 +60,10 @@ typedef struct rms_session_info {
 	struct rms_session_info* next;
 	struct rms_session_info* prev;
 	rms_sdp_info_t sdp_info;
-	char * session_id;
+	str callid;
+	str from;
+	str to;
+	int cseq;
 	ms_res_t ms;
 	call_leg_media_t caller_media;
 	call_leg_media_t callee_media;

@@ -44,10 +44,6 @@ static pv_export_t mod_pvs[] = {
 	{{0, 0}, 0, 0, 0, 0, 0, 0, 0}
 };
 
-static mi_export_t mi_cmds[] = {
-	{0,0,0,0,0}
-};
-
 static param_export_t mod_params[]={
 	{"server_address", PARAM_STR, &server_address},
 	{0,0,0}
@@ -63,7 +59,7 @@ struct module_exports exports = {
 	cmds,
 	mod_params,
 	mod_stats,   /* exported statistics */
-	mi_cmds,     /* exported MI functions */
+	0,     /* exported MI functions */
 	mod_pvs,     /* exported pseudo-variables */
 	0,           /* extra processes */
 	mod_init,
@@ -81,7 +77,6 @@ static int mod_init(void) {
 	rms.udp_start_port = 50000;
 	rms.udp_end_port = 60000;
 	rms.udp_last_port = 50000;
-	//rms.local_ip = strdup("127.0.0.200");
 	clist_init(&rms_session_list,next,prev);
 	rms_media_init();
 
@@ -136,6 +131,35 @@ static int child_init(int rank) {
 	signal(SIGINT,rms_signal_handler);
 	int rtn = 0;
 	return(rtn);
+}
+
+int rms_str_dup(str* dst, str* src, int shared) {
+	if (!dst) {
+		LM_ERR("dst null\n");
+		return -1;
+	}
+	dst->len = 0;
+	dst->s = NULL;
+	if (!src) {
+		LM_ERR("src null\n");
+		return 0;
+	}
+	if ( (!src->s) || (src->len < 1)) {
+		LM_ERR("empty src\n");
+		return 0;
+	}
+	if (shared) {
+		dst->s = shm_malloc(src->len +1);
+	} else {
+		dst->s = pkg_malloc(src->len +1);
+	}
+	if (!dst->s) {
+		LM_ERR("%s_malloc: can't allocate memory (%d bytes)\n", shared?"shm":"pkg", src->len);
+		return -1;
+	}
+	strncpy(dst->s, src->s, src->len);
+	dst->len = src->len;
+	return 1;
 }
 
 int rms_get_sdp_info (rms_sdp_info_t *sdp_info, struct sip_msg* msg) {
@@ -202,6 +226,29 @@ static int rms_relay_call(struct sip_msg* msg) {
 	return 1;
 }
 
+str headers = str_init("Max-Forwards: 70" CRLF);
+str method_bye = str_init("BYE");
+str method_ok = str_init("OK");
+str body = {0,0};
+str server_socket = {0,0};
+str to = str_init("caller@127.0.0.111");
+str from = str_init("media_server@127.0.0.101");
+
+static int rms_hangup_call(char * call_id) {
+	uac_req_t uac_r;
+	int result;
+
+	set_uac_req(&uac_r, &method_bye, &headers, &body, NULL,
+		TMCB_LOCAL_COMPLETED, NULL, call_id);
+	uac_r.ssock = &server_socket;
+	result = tmb.t_request(&uac_r, &to, &to, &from, NULL);
+	if(result < 0) {
+		LM_ERR("error in tmb.t_request\n");
+		return -1;
+	}
+	return 1;
+}
+
 static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	int status = 0;
 	str reason;
@@ -227,9 +274,8 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
 	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
-	reason.s = strdup("OK");
-	reason.len = strlen("OK");
-	to_tag.s = strdup("faketotag");
+	reason = method_ok;
+	to_tag.s = "faketotag";
 	to_tag.len = strlen("faketotag");
 	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->repl_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
@@ -240,7 +286,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 static rms_session_info_t * rms_session_search(char *callid, int len) {
 	rms_session_info_t *si;
 	clist_foreach(&rms_session_list, si, next){
-		if (strncmp(callid, si->session_id, len) == 0)
+		if (strcmp(callid, si->callid.s) == 0)
 			return si;
 	}
 	return NULL;
@@ -267,8 +313,12 @@ int rms_session_free(rms_session_info_t *si) {
 		payload_type_destroy(si->callee_media.pt);
 		si->callee_media.pt = NULL;
 	}
-	if (si->session_id)
-		free(si->session_id);
+	if (si->callid.s)
+		pkg_free(si->callid.s);
+	if (si->from.s)
+		pkg_free(si->from.s);
+	if (si->to.s)
+		pkg_free(si->to.s);
 
 	shm_free(si);
 	si = NULL;
@@ -279,10 +329,26 @@ rms_session_info_t *rms_session_new(struct sip_msg* msg) {
 	if(!rms_check_msg(msg))
 		return NULL;
 	rms_session_info_t *si = shm_malloc(sizeof(rms_session_info_t));
-	rms_sdp_info_init(&si->sdp_info);
-	memset(&si->callee_media,0,sizeof(call_leg_media_t));
-	memset(&si->caller_media,0,sizeof(call_leg_media_t));
-	si->session_id = strndup(msg->callid->body.s, msg->callid->body.len);
+	if (!si) {
+		LM_ERR("can not allocate session info !\n");
+		return NULL;
+	}
+	memset(si,0,sizeof(rms_session_info_t));
+	//rms_sdp_info_init(&si->sdp_info);
+	//memset(&si->callee_media,0,sizeof(call_leg_media_t));
+	//memset(&si->caller_media,0,sizeof(call_leg_media_t));
+
+	if (!rms_str_dup(&si->callid, &msg->callid->body,1)) {
+		LM_ERR("can not get callid .\n");
+		return NULL;
+	}
+	if (!rms_str_dup(&si->from, &msg->from->body,1))
+		return NULL;
+	if (!rms_str_dup(&si->to, &msg->to->body,1))
+		return NULL;
+
+	si->cseq = atoi(msg->cseq->body.s);
+
 	rms_sdp_info_t *sdp_info = &si->sdp_info;
 	if(!rms_get_sdp_info(sdp_info, msg)) {
 		rms_session_free(si);
@@ -303,7 +369,7 @@ int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
 	int x=1;
 	rms_session_info_t *si;
 	clist_foreach(&rms_session_list, si, next){
-		LM_INFO("[%d] session_id[%s]", x, si->session_id);
+		LM_INFO("[%d] callid[%s] from[%s] to[%s] cseq[%d]", x, si->callid.s, si->from.s, si->to.s, si->cseq);
 		x++;
 	}
 	return 1;
@@ -320,7 +386,7 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("session not fund ?\n");
 		return 1;
 	}
-	LM_INFO("session found [%s] stopping\n", si->session_id);
+	LM_INFO("session found [%s] stopping\n", si->callid.s);
 	//audio_stream_stop(si->ms.audio_stream);
 	//rtp_profile_destroy(si->ms.rtp_profile);
 	rms_stop_media(&si->caller_media);
@@ -365,19 +431,23 @@ int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
 		return -1;
 	}
 	rms_session_info_t *si = rms_session_new(msg);
-	if(!rms_create_call_leg(msg, si, &si->caller_media))
+	if (!si)
+		return -1;
+	if (!rms_create_call_leg(msg, si, &si->caller_media))
 		return -1;
 	return 1;
 }
 
 int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
-	if(!rms_create_call_leg(msg, si, &si->caller_media))
+	if (!si)
 		return -1;
-	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
-	rms_playfile(&si->caller_media, infile);
-	if(!rms_answer_call(msg, si)) {
+	if (!rms_create_call_leg(msg, si, &si->caller_media))
+		return -1;
+	if (!rms_answer_call(msg, si)) {
 		return -1;
 	}
+	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
+	rms_playfile(&si->caller_media, infile);
 	return 0;
 }

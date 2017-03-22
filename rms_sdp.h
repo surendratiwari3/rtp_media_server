@@ -2,7 +2,7 @@
 #ifndef rms_sdp_h
 #define rms_sdp_h
 
-#include "../../sr_module.h"
+#include "../../core/sr_module.h"
 #include <mediastreamer2/mediastream.h>
 
 typedef struct rms_sdp_info {
