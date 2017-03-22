@@ -66,8 +66,8 @@ int create_call_leg_media(call_leg_media_t *m){
 #define MS_UNUSED(x) ((void)(x))
 static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, void *event_data) {
 	if (event == MS_FILE_PLAYER_EOF) {
-		int *done = (int *)user_data;
-		*done = TRUE;
+		//int *done = (int *)user_data;
+		//*done = TRUE;
 	}
 	MS_UNUSED(f), MS_UNUSED(event_data);
 }

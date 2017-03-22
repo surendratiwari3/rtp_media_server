@@ -226,6 +226,7 @@ static int rms_relay_call(struct sip_msg* msg) {
 	return 1;
 }
 
+str reply_headers = {0,0};
 str headers = str_init("Max-Forwards: 70" CRLF);
 str method_bye = str_init("BYE");
 str method_ok = str_init("OK");
@@ -271,8 +272,11 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 		return 0;
 	}
 	LM_INFO("transaction created\n");
-	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
-	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
+	char buffer[128];
+	snprintf(buffer,128,"Contact: <sip:rtp_server@%s>\r\nContent-Type: application/sdp\r\n", server_address.s);
+	contact_hdr.len = strlen(buffer);
+	contact_hdr.s = pkg_malloc(contact_hdr.len+1);
+	strcpy(contact_hdr.s,buffer);
 	sdp_info->local_ip = server_address.s;
 	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
 	reason = method_ok;
