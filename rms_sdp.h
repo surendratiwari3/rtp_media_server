@@ -7,6 +7,7 @@
 
 typedef struct rms_sdp_info {
 	char * remote_ip;
+	char * local_ip;
 	char * payloads;
 	char * remote_port;
 	int ipv6;

@@ -108,12 +108,12 @@ int rms_playfile(call_leg_media_t *m, const char* file_name) {
 int rms_stop_media(call_leg_media_t *m) {
 	if (!m->ms_ticker)
 		return -1;
-	if (m->ms_rtpsend) {
-		ms_ticker_detach(m->ms_ticker, m->ms_rtpsend);
-	}
-	if (m->ms_rtprecv) {
-		ms_ticker_detach(m->ms_ticker, m->ms_rtprecv);
-	}
+	//if (m->ms_rtpsend) {
+	//	ms_ticker_detach(m->ms_ticker, m->ms_rtpsend);
+	//}
+	//if (m->ms_rtprecv) {
+	//	ms_ticker_detach(m->ms_ticker, m->ms_rtprecv);
+	//}
 	rtp_stats_display(rtp_session_get_stats(m->rtps)," AUDIO SESSION'S RTP STATISTICS ");
 	ms_factory_log_statistics(m->ms_factory);
 	return 1;

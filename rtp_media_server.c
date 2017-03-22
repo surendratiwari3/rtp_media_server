@@ -273,6 +273,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	LM_INFO("transaction created\n");
 	contact_hdr.s = strdup("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
 	contact_hdr.len = strlen("Contact: <sip:rtp_server@127.0.0.101>\r\nContent-Type: application/sdp\r\n");
+	sdp_info->local_ip = server_address.s;
 	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
 	reason = method_ok;
 	to_tag.s = "faketotag";
