@@ -73,7 +73,6 @@ static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, voi
 }
 
 int rms_playfile(call_leg_media_t *m, char* file_name) {
-
 	MSConnectionHelper h;
 	m->ms_ticker = rms_create_ticker(NULL);
 	m->ms_player = ms_factory_create_filter(m->ms_factory, MS_FILE_PLAYER_ID);
@@ -101,21 +100,57 @@ int rms_playfile(call_leg_media_t *m, char* file_name) {
 
 	ms_ticker_attach_multiple(m->ms_ticker, m->ms_player, m->ms_rtprecv, NULL);
 
-
 	return 1;
 }
 
 int rms_stop_media(call_leg_media_t *m) {
 	if (!m->ms_ticker)
 		return -1;
-	//if (m->ms_rtpsend) {
-	//	ms_ticker_detach(m->ms_ticker, m->ms_rtpsend);
-	//}
-	//if (m->ms_rtprecv) {
-	//	ms_ticker_detach(m->ms_ticker, m->ms_rtprecv);
-	//}
+	MSConnectionHelper h;
+	if (m->ms_player) {
+		ms_ticker_detach(m->ms_ticker, m->ms_player);
+	}
+	if (m->ms_encoder) {
+		ms_ticker_detach(m->ms_ticker, m->ms_encoder);
+	}
+	if (m->ms_rtpsend) {
+		ms_ticker_detach(m->ms_ticker, m->ms_rtpsend);
+	}
+	if (m->ms_rtprecv) {
+		ms_ticker_detach(m->ms_ticker, m->ms_rtprecv);
+	}
+	if (m->ms_voidsink) {
+		ms_ticker_detach(m->ms_ticker, m->ms_voidsink);
+	}
+
 	rtp_stats_display(rtp_session_get_stats(m->rtps)," AUDIO SESSION'S RTP STATISTICS ");
 	ms_factory_log_statistics(m->ms_factory);
+
+	/*dismantle the sending graph*/
+	ms_connection_helper_start(&h);
+	if (m->ms_player) {
+		ms_connection_helper_unlink(&h, m->ms_player,-1,0);
+	}
+	if (m->ms_encoder) {
+		ms_connection_helper_unlink(&h, m->ms_encoder,0,0);
+	}
+	if (m->ms_rtpsend) {
+		ms_connection_helper_unlink(&h, m->ms_rtpsend,0,-1);
+	}
+	/*dismantle the receiving graph*/
+	ms_connection_helper_start(&h);
+	if (m->ms_rtprecv) {
+		ms_connection_helper_unlink(&h, m->ms_rtprecv,-1,0);
+	}
+	if (m->ms_voidsink) {
+		ms_connection_helper_unlink(&h, m->ms_voidsink,0,-1);
+	}
+
+	if (m->ms_player) ms_filter_destroy(m->ms_player);
+	if (m->ms_encoder) ms_filter_destroy(m->ms_encoder);
+	if (m->ms_rtpsend) ms_filter_destroy(m->ms_rtpsend);
+	if (m->ms_rtprecv) ms_filter_destroy(m->ms_rtprecv);
+	if (m->ms_voidsink) ms_filter_destroy(m->ms_voidsink);
 	return 1;
 }
 
