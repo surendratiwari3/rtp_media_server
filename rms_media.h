@@ -63,6 +63,6 @@ void rms_media_destroy();
 MSFactory *rms_get_factory();
 
 int rms_stop_media(call_leg_media_t *m);
-int rms_playfile(call_leg_media_t *m, const char* file_name);
+int rms_playfile(call_leg_media_t *m, char* file_name);
 
 #endif

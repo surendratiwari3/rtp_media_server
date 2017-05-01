@@ -29,6 +29,7 @@ static int child_init(int);
 
 static rms_session_info_t rms_session_list;
 str server_address = {0, 0};
+str playback_fn = {0, 0};
 
 static rms_t rms;
 
@@ -46,6 +47,7 @@ static pv_export_t mod_pvs[] = {
 
 static param_export_t mod_params[]={
 	{"server_address", PARAM_STR, &server_address},
+	{"playback_file_name", PARAM_STR, &playback_fn},
 	{0,0,0}
 };
 
@@ -457,7 +459,6 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	if (!rms_answer_call(msg, si)) {
 		return -1;
 	}
-	const char *infile = strdup("/home/cloud/git/bc-linphone/mediastreamer2/tester/sounds/hello8000.wav");
-	rms_playfile(&si->caller_media, infile);
+	rms_playfile(&si->caller_media, playback_fn.s);
 	return 0;
 }

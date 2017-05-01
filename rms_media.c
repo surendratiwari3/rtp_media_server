@@ -72,7 +72,7 @@ static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, voi
 	MS_UNUSED(f), MS_UNUSED(event_data);
 }
 
-int rms_playfile(call_leg_media_t *m, const char* file_name) {
+int rms_playfile(call_leg_media_t *m, char* file_name) {
 
 	MSConnectionHelper h;
 	m->ms_ticker = rms_create_ticker(NULL);
