@@ -291,7 +291,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 static rms_session_info_t * rms_session_search(char *callid, int len) {
 	rms_session_info_t *si;
 	clist_foreach(&rms_session_list, si, next){
-		if (strcmp(callid, si->callid.s) == 0)
+		if (strncmp(callid, si->callid.s, len) == 0)
 			return si;
 	}
 	return NULL;
@@ -318,13 +318,18 @@ int rms_session_free(rms_session_info_t *si) {
 		payload_type_destroy(si->callee_media.pt);
 		si->callee_media.pt = NULL;
 	}
-	if (si->callid.s)
-		pkg_free(si->callid.s);
-	if (si->from.s)
-		pkg_free(si->from.s);
-	if (si->to.s)
-		pkg_free(si->to.s);
-
+	if (si->callid.s) {
+		shm_free(si->callid.s);
+		si->callid.s = NULL;
+	}
+	if (si->from.s) {
+		shm_free(si->from.s);
+		si->from.s = NULL;
+	}
+	if (si->to.s) {
+		shm_free(si->to.s);
+		si->to.s = NULL;
+	}
 	shm_free(si);
 	si = NULL;
 	return 1;
@@ -388,7 +393,7 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	}
 	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
 	if(!si){
-		LM_INFO("session not fund ?\n");
+		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
 		return 1;
 	}
 	LM_INFO("session found [%s] stopping\n", si->callid.s);
