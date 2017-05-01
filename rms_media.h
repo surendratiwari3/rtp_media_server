@@ -55,7 +55,7 @@ typedef struct call_leg_media {
 	int remote_port;
 } call_leg_media_t;
 
-int create_call_leg_media(call_leg_media_t *m);
+int create_call_leg_media(call_leg_media_t *m, char *callid);
 
 int rms_media_init();
 void rms_media_destroy();

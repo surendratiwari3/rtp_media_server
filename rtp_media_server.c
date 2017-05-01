@@ -237,7 +237,7 @@ str server_socket = {0,0};
 str to = str_init("caller@127.0.0.111");
 str from = str_init("media_server@127.0.0.101");
 
-static int rms_hangup_call(char * call_id) {
+int rms_hangup_call(char * call_id) {
 	uac_req_t uac_r;
 	int result;
 
@@ -434,7 +434,7 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 			sdp_info->remote_ip, sdp_info->remote_port,
 			m->local_ip, m->local_port,
 			si->caller_media.pt->mime_type);
-	create_call_leg_media(m);
+	create_call_leg_media(m, si->callid.s);
 	return 1;
 }
 
