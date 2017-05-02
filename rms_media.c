@@ -58,7 +58,7 @@ int create_call_leg_media(call_leg_media_t *m, char *callid){
 	m->ms_rtpsend = ms_factory_create_filter(m->ms_factory, MS_RTP_SEND_ID);
 	m->ms_encoder = ms_factory_create_encoder(m->ms_factory, m->pt->mime_type);
 	m->ms_decoder = ms_factory_create_decoder(m->ms_factory, m->pt->mime_type);
-	// set filter params
+	/* set filter params */
 	ms_filter_call_method(m->ms_rtpsend, MS_RTP_SEND_SET_SESSION, m->rtps);
 	ms_filter_call_method(m->ms_rtprecv, MS_RTP_RECV_SET_SESSION, m->rtps);
 	return 1;

@@ -237,22 +237,6 @@ str server_socket = {0,0};
 str to = str_init("caller@127.0.0.111");
 str from = str_init("media_server@127.0.0.101");
 
-int rms_hangup_call(char * callid) {
-	uac_req_t uac_r;
-	int result;
-	LM_INFO("rms_hangup_call[%s]\n", callid);
-	return 1;
-	set_uac_req(&uac_r, &method_bye, &headers, &body, NULL,
-		TMCB_LOCAL_COMPLETED, NULL, callid);
-	uac_r.ssock = &server_socket;
-	result = tmb.t_request(&uac_r, &to, &to, &from, NULL);
-	if(result < 0) {
-		LM_ERR("error in tmb.t_request\n");
-		return -1;
-	}
-	return 1;
-}
-
 static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	int status = 0;
 	str reason;
@@ -279,12 +263,19 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	snprintf(buffer,128,"Contact: <sip:rtp_server@%s>\r\nContent-Type: application/sdp\r\n", server_address.s);
 	contact_hdr.len = strlen(buffer);
 	contact_hdr.s = pkg_malloc(contact_hdr.len+1);
-	strcpy(contact_hdr.s,buffer);
+	strcpy(contact_hdr.s, buffer);
 	sdp_info->local_ip = server_address.s;
 	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
 	reason = method_ok;
+	// add totag
 	to_tag.s = "faketotag";
 	to_tag.len = strlen("faketotag");
+	si->to.len = snprintf(buffer, 128, "%s;tag=%s", si->to.s, to_tag.s);
+	shm_free(si->to.s);
+	si->to.s = shm_malloc(si->to.len+1);
+	strcpy(si->to.s, buffer);
+	LM_INFO("[to] %s\n", si->to.s);
+
 	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->repl_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
@@ -298,6 +289,28 @@ static rms_session_info_t * rms_session_search(char *callid, int len) {
 			return si;
 	}
 	return NULL;
+}
+
+int rms_hangup_call(char * callid) {
+	uac_req_t uac_r;
+	int result;
+
+	rms_session_info_t *si = rms_session_search(callid, strlen(callid));
+	if (!si) {
+		LM_INFO("rms_hangup_call[%s] not found !\n", callid);
+		return 0;
+	}
+	LM_INFO("rms_hangup_call[%s]from[%s]to[%s]\n", callid, si->from.s, si->to.s);
+
+	set_uac_req(&uac_r, &method_bye, &headers, &body, NULL,
+		TMCB_LOCAL_COMPLETED, NULL, callid);
+	uac_r.ssock = &server_socket;
+	result = tmb.t_request(&uac_r, &si->to, &si->to, &si->from, NULL);
+	if(result < 0) {
+		LM_ERR("error in tmb.t_request\n");
+		return -1;
+	}
+	return 1;
 }
 
 static int rms_check_msg(struct sip_msg* msg) {
