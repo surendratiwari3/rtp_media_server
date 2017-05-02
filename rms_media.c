@@ -47,7 +47,7 @@ void rms_media_destroy() {
 
 int create_call_leg_media(call_leg_media_t *m, char *callid){
 	m->ms_factory = rms_create_factory();
-
+	m->callid = callid;
 	// create caller RTP session
 	m->rtps = ms_create_duplex_rtp_session(m->local_ip, m->local_port, m->local_port+1, ms_factory_get_mtu(m->ms_factory));
 	rtp_session_set_remote_addr_full(m->rtps, m->remote_ip, m->remote_port, m->remote_ip, m->remote_port+1);
@@ -67,8 +67,8 @@ int create_call_leg_media(call_leg_media_t *m, char *callid){
 #define MS_UNUSED(x) ((void)(x))
 static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, void *event_data) {
 	if (event == MS_FILE_PLAYER_EOF) {
-		//int *done = (int *)user_data;
-		//*done = TRUE;
+		call_leg_media_t *m = (call_leg_media_t *) user_data;
+		rms_hangup_call(m->callid);
 	}
 	MS_UNUSED(f), MS_UNUSED(event_data);
 }
@@ -79,8 +79,8 @@ int rms_playfile(call_leg_media_t *m, char* file_name) {
 	m->ms_player = ms_factory_create_filter(m->ms_factory, MS_FILE_PLAYER_ID);
 	//m->ms_recorder = ms_factory_create_filter(m->ms_factory, MS_FILE_PLAYER_ID);
 	m->ms_voidsink = ms_factory_create_filter(m->ms_factory, MS_VOID_SINK_ID);
-	ms_filter_add_notify_callback(m->ms_player, (MSFilterNotifyFunc) rms_player_eof, NULL, TRUE);
-
+	//ms_filter_add_notify_callback(m->ms_player, (MSFilterNotifyFunc) rms_player_eof, m, TRUE);
+	ms_filter_add_notify_callback(m->ms_player, rms_player_eof, m, TRUE);
 	ms_filter_call_method(m->ms_player, MS_FILE_PLAYER_OPEN, (void *) file_name);
 	int channels = 1;
 	ms_filter_call_method(m->ms_player, MS_FILTER_SET_OUTPUT_NCHANNELS, &channels);

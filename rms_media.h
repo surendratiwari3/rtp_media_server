@@ -53,6 +53,7 @@ typedef struct call_leg_media {
 	int local_port;
 	char* remote_ip;
 	int remote_port;
+	char *callid;
 } call_leg_media_t;
 
 int create_call_leg_media(call_leg_media_t *m, char *callid);

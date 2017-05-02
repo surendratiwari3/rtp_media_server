@@ -237,12 +237,13 @@ str server_socket = {0,0};
 str to = str_init("caller@127.0.0.111");
 str from = str_init("media_server@127.0.0.101");
 
-int rms_hangup_call(char * call_id) {
+int rms_hangup_call(char * callid) {
 	uac_req_t uac_r;
 	int result;
-
+	LM_INFO("rms_hangup_call[%s]\n", callid);
+	return 1;
 	set_uac_req(&uac_r, &method_bye, &headers, &body, NULL,
-		TMCB_LOCAL_COMPLETED, NULL, call_id);
+		TMCB_LOCAL_COMPLETED, NULL, callid);
 	uac_r.ssock = &server_socket;
 	result = tmb.t_request(&uac_r, &to, &to, &from, NULL);
 	if(result < 0) {
