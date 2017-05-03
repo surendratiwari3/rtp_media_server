@@ -245,7 +245,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	str reason;
 	str to_tag;
 	str contact_hdr;
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	rms_sdp_info_t *sdp_info = &si->sdp_info_offer;
 
 	if(msg->REQ_METHOD!=METHOD_INVITE) {
 		LM_INFO("only invite is supported for offer \n");
@@ -268,7 +268,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	contact_hdr.s = pkg_malloc(contact_hdr.len+1);
 	strcpy(contact_hdr.s, buffer);
 	sdp_info->local_ip = server_address.s;
-	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
 	reason = method_ok;
 	// add real totag
 	to_tag.s = "faketotag";
@@ -279,7 +279,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	strcpy(si->to.s, buffer);
 	LM_INFO("[to] %s\n", si->to.s);
 
-	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->repl_body,&contact_hdr,&to_tag)) {
+	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->new_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
 	return 1;
@@ -348,7 +348,8 @@ static int rms_check_msg(struct sip_msg* msg) {
 
 int rms_session_free(rms_session_info_t *si) {
 	clist_rm(si,next,prev);
-	rms_sdp_info_free(&si->sdp_info);
+	rms_sdp_info_free(&si->sdp_info_offer);
+	rms_sdp_info_free(&si->sdp_info_answer);
 	if (si->caller_media.pt) {
 		payload_type_destroy(si->caller_media.pt);
 		si->caller_media.pt = NULL;
@@ -401,10 +402,11 @@ rms_session_info_t *rms_session_new(struct sip_msg* msg) {
 	if (!rms_str_dup(&si->contact_uri, &contact->contacts->uri, 1))
 		return NULL;
 	//LM_ERR("[contact] [%.*s]\n", si->contact->contacts->uri.len, si->contact->contacts->uri.s);
-	LM_ERR("[contact] [%.*s]\n", si->contact_uri.len, si->contact_uri.s);
+	LM_ERR("[contact offer] [%.*s]\n", si->contact_uri.len, si->contact_uri.s);
 	si->cseq = atoi(msg->cseq->body.s);
 
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	rms_sdp_info_t *sdp_info = &si->sdp_info_offer;
+	sdp_info->local_ip = server_address.s;
 	if(!rms_get_sdp_info(sdp_info, msg)) {
 		rms_session_free(si);
 		return NULL;
@@ -463,8 +465,7 @@ static int rms_get_udp_port(void) {
 	return rms.udp_last_port;
 }
 
-int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_media_t *m) {
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
+int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_media_t *m, rms_sdp_info_t* sdp_info)  {
 	m->local_port = rms_get_udp_port();
 	sdp_info->udp_local_port = m->local_port;
 
@@ -483,12 +484,12 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 
 int rms_sdp_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
-	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
-	rms_sdp_set_body(msg, &sdp_info->repl_body);
+	rms_sdp_info_t *sdp_info = &si->sdp_info_offer;
+	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_set_body(msg, &sdp_info->new_body);
 	if (!si)
 		return -1;
-	if (!rms_create_call_leg(msg, si, &si->caller_media))
+	if (!rms_create_call_leg(msg, si, &si->caller_media, sdp_info))
 		return -1;
 	if (!rms_relay_call(msg)) {
 		return -1;
@@ -509,8 +510,15 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 	}
 	LM_INFO("session found [%s] bridging\n", si->callid.s);
 
-	rms_sdp_info_t *sdp_info = &si->sdp_info;
-	rms_sdp_set_body(msg, &sdp_info->repl_body);
+	rms_sdp_info_t *sdp_info = &si->sdp_info_answer;
+	if(!rms_get_sdp_info(sdp_info, msg)) {
+		LM_ERR("can not get SDP information\n");
+		return -1;
+	}
+	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_set_body(msg, &sdp_info->new_body);
+	sdp_info->local_ip = server_address.s;
+
 	//// replacing body
 
 	//if(!sdp) {
@@ -521,7 +529,7 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 	//sdp_info->recv_body.len = sdp->text.len;
 	//rms_sdp_info_t *sdp_info = &si->sdp_info;
 	//;
-	//rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
+	//rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
 	//str body;
 	//body.s = ((sdp_info_t*)msg->body)->raw_sdp.s;
 	//body.len = ((sdp_info_t*)msg->body)->raw_sdp.len;
@@ -530,7 +538,7 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 	//if (!anchor) {
 	//	LM_ERR("del_lump failed\n");
 	//}
-	//if (!insert_new_lump_after(anchor, sdp_info->repl_body.s, sdp_info->repl_body.len, 0)) {
+	//if (!insert_new_lump_after(anchor, sdp_info->new_body.s, sdp_info->new_body.len, 0)) {
 	//	LM_ERR("insert_new_lump_after failed\n");
 	//}
 	// create second call leg
@@ -542,7 +550,7 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
 	if (!si)
 		return -1;
-	if (!rms_create_call_leg(msg, si, &si->caller_media))
+	if (!rms_create_call_leg(msg, si, &si->caller_media, &si->sdp_info_offer))
 		return -1;
 	if (!rms_answer_call(msg, si)) {
 		return -1;

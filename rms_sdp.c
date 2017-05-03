@@ -47,7 +47,7 @@ void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_port=NULL;
 	sdp_info->payloads=NULL;
 	sdp_info->ipv6=0;
-	sdp_info->repl_body.s=NULL;
+	sdp_info->new_body.s=NULL;
 	sdp_info->recv_body.s=NULL;
 }
 
@@ -64,19 +64,19 @@ void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 		pkg_free(sdp_info->payloads);
 		sdp_info->payloads = NULL;
 	}
-	if(sdp_info->repl_body.s) {
-		pkg_free(sdp_info->repl_body.s);
-		sdp_info->repl_body.s = NULL;
-		sdp_info->repl_body.len = 0;
+	if(sdp_info->new_body.s) {
+		pkg_free(sdp_info->new_body.s);
+		sdp_info->new_body.s = NULL;
+		sdp_info->new_body.len = 0;
 	}
 }
 
 // should be called "prepare" not actualy set ?
-void rms_sdp_set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) {
-	if(sdp_info->repl_body.s)
+void rms_sdp_prepare_new_body(rms_sdp_info_t * sdp_info, int payload_type_number) {
+	if(sdp_info->new_body.s)
 		return;
 
-	str *body = &sdp_info->repl_body;
+	str *body = &sdp_info->new_body;
 	body->len=strlen(sdp_v)+strlen(sdp_s)+strlen(sdp_t);
 
 	// (originator and session identifier)

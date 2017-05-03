@@ -65,7 +65,8 @@ typedef struct ms_res {
 typedef struct rms_session_info {
 	struct rms_session_info* next;
 	struct rms_session_info* prev;
-	rms_sdp_info_t sdp_info;
+	rms_sdp_info_t sdp_info_offer;
+	rms_sdp_info_t sdp_info_answer;
 	str callid;
 	str from;
 	str to;
