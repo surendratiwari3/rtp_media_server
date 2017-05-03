@@ -163,6 +163,7 @@ int rms_str_dup(str* dst, str* src, int shared) {
 		return -1;
 	}
 	strncpy(dst->s, src->s, src->len);
+	dst->s[src->len] = '\0';
 	dst->len = src->len;
 	return 1;
 }
@@ -286,11 +287,15 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 }
 
 static rms_session_info_t * rms_session_search(char *callid, int len) {
+	lock(&session_list_mutex);
 	rms_session_info_t *si;
 	clist_foreach(&rms_session_list, si, next){
-		if (strncmp(callid, si->callid.s, len) == 0)
+		if (strncmp(callid, si->callid.s, len) == 0) {
+			unlock(&session_list_mutex);
 			return si;
+		}
 	}
+	unlock(&session_list_mutex);
 	return NULL;
 }
 
@@ -379,9 +384,6 @@ rms_session_info_t *rms_session_new(struct sip_msg* msg) {
 		return NULL;
 	}
 	memset(si,0,sizeof(rms_session_info_t));
-	//rms_sdp_info_init(&si->sdp_info);
-	//memset(&si->callee_media,0,sizeof(call_leg_media_t));
-	//memset(&si->caller_media,0,sizeof(call_leg_media_t));
 
 	if (!rms_str_dup(&si->callid, &msg->callid->body,1)) {
 		LM_ERR("can not get callid .\n");

@@ -38,6 +38,9 @@
 // https://www.kamailio.org/dokuwiki/doku.php/development:write-module
 // http://www.kamailio.org/docs/kamailio-devel-guide/#c16makefile
 
+/* protection against concurrent reply processing */
+ser_lock_t session_list_mutex;
+
 static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
 static int rms_transfer(struct sip_msg *, char *, char *);
