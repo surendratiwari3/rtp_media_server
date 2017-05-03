@@ -116,7 +116,6 @@ void rms_signal_handler(int signum) {
 	LM_INFO("signal received [%d]\n", signum);
 }
 
-
 /**
  * The rank will be o for the main process calling this function,
  * or 1 through n for each listener process. The rank can have a negative
@@ -271,7 +270,7 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	sdp_info->local_ip = server_address.s;
 	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
 	reason = method_ok;
-	// add totag
+	// add real totag
 	to_tag.s = "faketotag";
 	to_tag.len = strlen("faketotag");
 	si->to.len = snprintf(buffer, 128, "%s;tag=%s", si->to.s, to_tag.s);
@@ -290,7 +289,6 @@ static rms_session_info_t * rms_session_search(char *callid, int len) {
 	lock(&session_list_mutex);
 	rms_session_info_t *si;
 	clist_foreach(rms_session_list, si, next){
-		LM_INFO("[%s]<>[%s]\n", callid, si->callid.s);
 		if (strncmp(callid, si->callid.s, len) == 0) {
 			unlock(&session_list_mutex);
 			return si;
@@ -434,12 +432,12 @@ int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
 
 int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si;
-	if(!msg || !msg->callid || !msg->callid->body.s) {
+	if (!msg || !msg->callid || !msg->callid->body.s) {
 		LM_INFO("no callid ?\n");
 		return -1;
 	}
 	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
-	if(!si){
+	if (!si){
 		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
 		return 1;
 	}
@@ -485,6 +483,9 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 
 int rms_sdp_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_set_body(msg, &sdp_info->repl_body);
 	if (!si)
 		return -1;
 	if (!rms_create_call_leg(msg, si, &si->caller_media))
@@ -507,6 +508,31 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 		return 1;
 	}
 	LM_INFO("session found [%s] bridging\n", si->callid.s);
+
+	rms_sdp_info_t *sdp_info = &si->sdp_info;
+	rms_sdp_set_body(msg, &sdp_info->repl_body);
+	//// replacing body
+
+	//if(!sdp) {
+	//	LM_INFO("sdp null\n");
+	//	return -1;
+	//}
+	//sdp_info->recv_body.s = sdp->text.s;
+	//sdp_info->recv_body.len = sdp->text.len;
+	//rms_sdp_info_t *sdp_info = &si->sdp_info;
+	//;
+	//rms_sdp_set_reply_body(sdp_info, si->caller_media.pt->type);
+	//str body;
+	//body.s = ((sdp_info_t*)msg->body)->raw_sdp.s;
+	//body.len = ((sdp_info_t*)msg->body)->raw_sdp.len;
+	//struct lump *anchor;
+	//anchor = del_lump(msg, body.s - msg->buf, body.len, 0);
+	//if (!anchor) {
+	//	LM_ERR("del_lump failed\n");
+	//}
+	//if (!insert_new_lump_after(anchor, sdp_info->repl_body.s, sdp_info->repl_body.len, 0)) {
+	//	LM_ERR("insert_new_lump_after failed\n");
+	//}
 	// create second call leg
 	// replace rtpmap and ftmp
 	return 1;

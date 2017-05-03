@@ -21,6 +21,7 @@
 #ifndef rms_h
 #define rms_h
 
+#include "../../core/data_lump.h"
 #include "../../core/sr_module.h"
 #include "../../core/parser/sdp/sdp_helpr_funcs.h"
 #include "../../core/parser/parse_content.h"

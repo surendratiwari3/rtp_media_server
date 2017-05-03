@@ -1,5 +1,6 @@
 #include "rms_sdp.h"
-
+#include "../../core/data_lump.h"
+#include "../../core/parser/parse_content.h"
 
 // https://tools.ietf.org/html/rfc4566
 // (protocol version)
@@ -15,7 +16,7 @@ const char *sdp_t = "t=0 0\r\n";
 //"a=rtpmap:96 opus/48000/2\r\n"
 //"a=fmtp:96 useinbandfec=1\r\n";
 
-inline static char* shm_strdup(char *source) {
+static char* rms_shm_strdup(char *source) {
 	char *copy;
 	if (!source)
 		return NULL;
@@ -24,6 +25,21 @@ inline static char* shm_strdup(char *source) {
 		return NULL;
 	strcpy(copy, source);
 	return copy;
+}
+
+static char* rms_sdp_get_rtpmap(str body, int type_number) {
+	char *pos = body.s;
+	while ((pos = strstr(pos, "a=rtpmap:"))) {
+		int id;
+		char codec[64];
+		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
+		if(id == type_number) {
+			LM_INFO("[%d][%s]\n", id, codec);
+			return rms_shm_strdup(codec);
+		}
+		pos++;
+	}
+	return NULL;
 }
 
 void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
@@ -55,6 +71,7 @@ void rms_sdp_info_free(rms_sdp_info_t * sdp_info) {
 	}
 }
 
+// should be called "prepare" not actualy set ?
 void rms_sdp_set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) {
 	if(sdp_info->repl_body.s)
 		return;
@@ -86,20 +103,6 @@ void rms_sdp_set_reply_body(rms_sdp_info_t * sdp_info, int payload_type_number) 
 	strcat(body->s, sdp_m);
 }
 
-static char * rms_sdp_get_rtpmap(str body, int type_number) {
-	char *pos = body.s;
-	while ((pos = strstr(pos, "a=rtpmap:"))) {
-		int id;
-		char codec[64];
-		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
-		if(id == type_number) {
-			LM_INFO("[%d][%s]\n", id, codec);
-			return shm_strdup(codec);
-		}
-		pos++;
-	}
-	return NULL;
-}
 
 PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 	// https://tools.ietf.org/html/rfc3551
@@ -120,7 +123,7 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 			return NULL;
 		} else if (pt->type >= 96) {
 			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
-			pt->mime_type = shm_strdup(strtok(rtpmap, "/"));
+			pt->mime_type = rms_shm_strdup(strtok(rtpmap, "/"));
 			if (strcasecmp(pt->mime_type,"opus") == 0) {
 				pt->clock_rate = atoi(strtok(NULL, "/"));
 				pt->channels = atoi(strtok(NULL, "/"));
@@ -131,13 +134,13 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 			pt->mime_type=NULL;
 			free(rtpmap);
 		} else if (pt->type == 0) {
-			pt->mime_type=shm_strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
+			pt->mime_type=rms_shm_strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
 		} else if (pt->type == 8) {
-			pt->mime_type=shm_strdup("pcma");
+			pt->mime_type=rms_shm_strdup("pcma");
 		} else if (pt->type == 9) {
-			pt->mime_type=shm_strdup("g722");
+			pt->mime_type=rms_shm_strdup("g722");
 		} else if (pt->type == 18) {
-			pt->mime_type=shm_strdup("g729");
+			pt->mime_type=rms_shm_strdup("g729");
 		}
 		if(pt->mime_type)
 			break;
@@ -150,4 +153,121 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 	}
 	LM_INFO("payload_type:%d %s/%d/%d\n", pt->type, pt->mime_type, pt->clock_rate, pt->channels);
 	return pt;
+}
+
+str content_type_sdp = str_init("application/sdp");
+
+int rms_sdp_set_body(struct sip_msg* msg, str* new_body) {
+	struct lump *anchor;
+	char* buf;
+	int len;
+	char* value_s;
+	int value_len;
+	str body = {0,0};
+
+	if (!new_body->s || new_body->len == 0) {
+		LM_ERR("invalid body parameter\n");
+		return -1;
+	}
+
+	body.len = 0;
+	body.s = get_body(msg);
+	if (body.s==0) {
+		LM_ERR("malformed sip message\n");
+		return -1;
+	}
+
+	del_nonshm_lump( &(msg->body_lumps) );
+	msg->body_lumps = NULL;
+
+	if (msg->content_length) {
+		body.len = get_content_length( msg );
+		if (body.len > 0) {
+			if (body.s+body.len>msg->buf+msg->len) {
+				LM_ERR("invalid content length: %d\n", body.len);
+				return -1;
+			}
+			if(del_lump(msg, body.s - msg->buf, body.len, 0) == 0) {
+				LM_ERR("cannot delete existing body");
+				return -1;
+			}
+		}
+	}
+
+	anchor = anchor_lump(msg, msg->unparsed - msg->buf, 0, 0);
+	if (! anchor) {
+		LM_ERR("failed to get anchor\n");
+		return -1;
+	}
+
+	if ( msg->content_length == 0 ) {
+		/* need to add Content-Length */
+		len = new_body->len;
+		value_s=int2str(len, &value_len);
+		LM_DBG("content-length: %d (%s)\n", value_len, value_s);
+
+		len=CONTENT_LENGTH_LEN+value_len+CRLF_LEN;
+		buf=pkg_malloc(sizeof(char)*(len));
+
+		if (buf==0) {
+			LM_ERR("out of pkg memory\n");
+			return -1;
+		}
+
+		memcpy(buf, CONTENT_LENGTH, CONTENT_LENGTH_LEN);
+		memcpy(buf+CONTENT_LENGTH_LEN, value_s, value_len);
+		memcpy(buf+CONTENT_LENGTH_LEN+value_len, CRLF, CRLF_LEN);
+		if (insert_new_lump_after(anchor, buf, len, 0) == 0) {
+			LM_ERR("failed to insert content-length lump\n");
+			pkg_free(buf);
+			return -1;
+		}
+	}
+
+	/* add content-type */
+	if (msg->content_type==NULL || msg->content_type->body.len != content_type_sdp.len
+			|| strncmp(msg->content_type->body.s, content_type_sdp.s, content_type_sdp.len)!=0) {
+		if (msg->content_type!=NULL) {
+			if (del_lump(msg, msg->content_type->name.s-msg->buf, msg->content_type->len, 0) == 0) {
+				LM_ERR("failed to delete content type\n");
+				return -1;
+			}
+		}
+		value_len = content_type_sdp.len;
+		len=sizeof("Content-Type: ") - 1 + value_len + CRLF_LEN;
+		buf=pkg_malloc(sizeof(char)*(len));
+
+		if (buf==0) {
+			LM_ERR("out of pkg memory\n");
+			return -1;
+		}
+		memcpy(buf, "Content-Type: ", sizeof("Content-Type: ") - 1);
+		memcpy(buf+sizeof("Content-Type: ") - 1, content_type_sdp.s, value_len);
+		memcpy(buf+sizeof("Content-Type: ") - 1 + value_len, CRLF, CRLF_LEN);
+		if (insert_new_lump_after(anchor, buf, len, 0) == 0) {
+			LM_ERR("failed to insert content-type lump\n");
+			pkg_free(buf);
+			return -1;
+		}
+	}
+	anchor = anchor_lump(msg, body.s - msg->buf, 0, 0);
+
+	if (anchor == 0) {
+		LM_ERR("failed to get body anchor\n");
+		return -1;
+	}
+
+	buf=pkg_malloc(sizeof(char)*(new_body->len));
+	if (buf==0) {
+		LM_ERR("out of pkg memory\n");
+		return -1;
+	}
+	memcpy(buf, new_body->s, new_body->len);
+	if (!insert_new_lump_after(anchor, buf, new_body->len, 0)) {
+		LM_ERR("failed to insert body lump\n");
+		pkg_free(buf);
+		return -1;
+	}
+	LM_DBG("new body: [%.*s]", new_body->len, new_body->s);
+	return 1;
 }

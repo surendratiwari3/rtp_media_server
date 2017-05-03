@@ -16,6 +16,7 @@ typedef struct rms_sdp_info {
 	int udp_local_port;
 } rms_sdp_info_t;
 
+int rms_sdp_set_body(struct sip_msg* msg, str* new_body);
 void rms_sdp_set_reply_body(rms_sdp_info_t *, int payload_type_number);
 void rms_sdp_info_init(rms_sdp_info_t * sdp_info);
 void rms_sdp_info_free(rms_sdp_info_t * sdp_info);
