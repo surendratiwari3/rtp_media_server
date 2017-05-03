@@ -26,6 +26,7 @@
 #include "../../core/parser/parse_content.h"
 #include "../../core/data_lump_rpl.h"
 #include "../../core/clist.h"
+#include "../../core/parser/contact/parse_contact.h"
 
 #include "../tm/tm_load.h"
 #include "../sdpops/api.h"
@@ -63,6 +64,7 @@ typedef struct rms_session_info {
 	str callid;
 	str from;
 	str to;
+	str contact_uri;
 	int cseq;
 	ms_res_t ms;
 	call_leg_media_t caller_media;

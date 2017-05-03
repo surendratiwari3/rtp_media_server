@@ -21,6 +21,7 @@
 #ifndef rms_media_h
 #define rms_media_h
 
+#include "../../core/mem/shm.h"
 #include "mediastreamer2/mediastream.h"
 #include "mediastreamer2/msrtp.h"
 #include "mediastreamer2/mediastream.h"
@@ -31,6 +32,7 @@
 #include "mediastreamer2/mstonedetector.h"
 //#include <mediastreamer2/mediastream.h>
 #include <ortp/ortp.h>
+#include <ortp/port.h>
 
 #define MS_UNUSED(x) ((void)(x))
 
@@ -53,10 +55,10 @@ typedef struct call_leg_media {
 	int local_port;
 	char* remote_ip;
 	int remote_port;
-	char *callid;
+	str *callid;
 } call_leg_media_t;
 
-int create_call_leg_media(call_leg_media_t *m, char *callid);
+int create_call_leg_media(call_leg_media_t *m, str *callid);
 
 int rms_media_init();
 void rms_media_destroy();

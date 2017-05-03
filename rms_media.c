@@ -17,11 +17,27 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
-
+#include "../../core/sr_module.h"
+#include "../../core/mem/shm.h"
 #include "rms_media.h"
 #include "rtp_media_server_call.h"
 
+inline static void* ptr_shm_malloc(size_t size) {
+	return shm_malloc(size);
+}
+inline static void* ptr_shm_realloc(void *ptr, size_t size) {
+	return shm_realloc(ptr, size);
+}
+inline static void ptr_shm_free(void *ptr) {
+	shm_free(ptr);
+}
+
 int rms_media_init() {
+	OrtpMemoryFunctions ortp_memory_functions;
+	ortp_memory_functions.malloc_fun = ptr_shm_malloc;
+	ortp_memory_functions.realloc_fun = ptr_shm_realloc;
+	ortp_memory_functions.free_fun = ptr_shm_free;
+	ortp_set_memory_functions(&ortp_memory_functions);
 	ortp_init();
 	return 1;
 }
@@ -45,7 +61,7 @@ void rms_media_destroy() {
 //	ms_factory_destroy(ms_factory);
 }
 
-int create_call_leg_media(call_leg_media_t *m, char *callid){
+int create_call_leg_media(call_leg_media_t *m, str *callid){
 	m->ms_factory = rms_create_factory();
 	m->callid = callid;
 	// create caller RTP session

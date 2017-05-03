@@ -20,5 +20,5 @@
 
 #ifndef rms_call_h
 #define rms_call_h
-int rms_hangup_call(char * call_id);
+int rms_hangup_call(str* call_id);
 #endif

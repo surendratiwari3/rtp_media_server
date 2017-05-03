@@ -30,6 +30,7 @@ static int child_init(int);
 static rms_session_info_t rms_session_list;
 str server_address = {0, 0};
 str playback_fn = {0, 0};
+str log_fn = {0, 0};
 
 static rms_t rms;
 
@@ -48,6 +49,7 @@ static pv_export_t mod_pvs[] = {
 static param_export_t mod_params[]={
 	{"server_address", PARAM_STR, &server_address},
 	{"playback_file_name", PARAM_STR, &playback_fn},
+	{"log_file_name", PARAM_STR, &log_fn},
 	{0,0,0}
 };
 
@@ -82,17 +84,18 @@ static int mod_init(void) {
 	clist_init(&rms_session_list,next,prev);
 	rms_media_init();
 
+
+
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
 		return -1;
 	}
-	const char * log_fn = "/tmp/ortp.log";
-	FILE * log_file =  fopen (log_fn, "w+");
+	FILE * log_file =  fopen (log_fn.s, "w+");
 	if (log_file) {
-		LM_INFO("ortp logs are redirected [%s]\n", log_fn);
+		LM_INFO("ortp logs are redirected [%s]\n", log_fn.s);
 	} else {
 		log_file = stdout;
-		LM_INFO("ortp can not open logs file [%s]\n", log_fn);
+		LM_INFO("ortp can not open logs file [%s]\n", log_fn.s);
 	}
 	ortp_set_log_file(log_file);
 	ortp_set_log_level_mask(NULL, ORTP_MESSAGE|ORTP_WARNING|ORTP_ERROR|ORTP_FATAL);
@@ -291,21 +294,37 @@ static rms_session_info_t * rms_session_search(char *callid, int len) {
 	return NULL;
 }
 
-int rms_hangup_call(char * callid) {
+int rms_hangup_call(str *callid) {
 	uac_req_t uac_r;
 	int result;
 
-	rms_session_info_t *si = rms_session_search(callid, strlen(callid));
+	rms_session_info_t *si = rms_session_search(callid->s, callid->len);
 	if (!si) {
-		LM_INFO("rms_hangup_call[%s] not found !\n", callid);
+		LM_INFO("rms_hangup_call[%s] not found !\n", callid->s);
 		return 0;
 	}
-	LM_INFO("rms_hangup_call[%s]from[%s]to[%s]\n", callid, si->from.s, si->to.s);
-
+	LM_INFO("rms_hangup_call[%s]from[%s]to[%s]\n", callid->s, si->from.s, si->to.s);
+	LM_INFO("[contact] [%.*s]\n", si->contact_uri.len, si->contact_uri.s);
+/*
+	//	#define set_uac_req(_req, \
+	//			_m, _h, _b, _dlg, _cb_flags, _cb, _cbp) \
+	//		do { \
+	//			memset((_req), 0, sizeof(uac_req_t)); \
+	//			(_req)->method = (_m); \
+	//			(_req)->headers = (_h); \
+	//			(_req)->body = (_b); \
+	//			(_req)->dialog = (_dlg); \
+	//			(_req)->cb_flags = (_cb_flags); \
+	//			(_req)->cb = (_cb); \
+	//			(_req)->cbp = (_cbp); \
+	//		} while (0)
+*/
 	set_uac_req(&uac_r, &method_bye, &headers, &body, NULL,
-		TMCB_LOCAL_COMPLETED, NULL, callid);
+		TMCB_LOCAL_COMPLETED, NULL, NULL);
+	uac_r.callid = callid;
+
 	uac_r.ssock = &server_socket;
-	result = tmb.t_request(&uac_r, &si->to, &si->to, &si->from, NULL);
+	result = tmb.t_request(&uac_r, &si->contact_uri, &si->to, &si->from, NULL);
 	if(result < 0) {
 		LM_ERR("error in tmb.t_request\n");
 		return -1;
@@ -373,6 +392,15 @@ rms_session_info_t *rms_session_new(struct sip_msg* msg) {
 	if (!rms_str_dup(&si->to, &msg->to->body,1))
 		return NULL;
 
+	struct hdr_field* hdr = msg->contact;
+	if (parse_contact(hdr) < 0) // free !
+		return NULL;
+	//si->contact = hdr->parsed;
+	contact_body_t *contact = hdr->parsed;
+	if (!rms_str_dup(&si->contact_uri, &contact->contacts->uri, 1))
+		return NULL;
+	//LM_ERR("[contact] [%.*s]\n", si->contact->contacts->uri.len, si->contact->contacts->uri.s);
+	LM_ERR("[contact] [%.*s]\n", si->contact_uri.len, si->contact_uri.s);
 	si->cseq = atoi(msg->cseq->body.s);
 
 	rms_sdp_info_t *sdp_info = &si->sdp_info;
@@ -448,7 +476,7 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 			sdp_info->remote_ip, sdp_info->remote_port,
 			m->local_ip, m->local_port,
 			si->caller_media.pt->mime_type);
-	create_call_leg_media(m, si->callid.s);
+	create_call_leg_media(m, &si->callid);
 	return 1;
 }
 

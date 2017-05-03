@@ -15,6 +15,17 @@ const char *sdp_t = "t=0 0\r\n";
 //"a=rtpmap:96 opus/48000/2\r\n"
 //"a=fmtp:96 useinbandfec=1\r\n";
 
+inline static char* shm_strdup(char *source) {
+	char *copy;
+	if (!source)
+		return NULL;
+	copy = (char*)shm_malloc(strlen(source) + 1);
+	if (!copy)
+		return NULL;
+	strcpy(copy, source);
+	return copy;
+}
+
 void rms_sdp_info_init(rms_sdp_info_t * sdp_info) {
 	sdp_info->remote_ip=NULL;
 	sdp_info->remote_port=NULL;
@@ -83,7 +94,7 @@ static char * rms_sdp_get_rtpmap(str body, int type_number) {
 		sscanf(pos,"a=rtpmap:%d %64s", &id, codec);
 		if(id == type_number) {
 			LM_INFO("[%d][%s]\n", id, codec);
-			return strdup(codec);
+			return shm_strdup(codec);
 		}
 		pos++;
 	}
@@ -109,7 +120,7 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 			return NULL;
 		} else if (pt->type >= 96) {
 			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
-			pt->mime_type = strdup(strtok(rtpmap, "/"));
+			pt->mime_type = shm_strdup(strtok(rtpmap, "/"));
 			if (strcasecmp(pt->mime_type,"opus") == 0) {
 				pt->clock_rate = atoi(strtok(NULL, "/"));
 				pt->channels = atoi(strtok(NULL, "/"));
@@ -120,13 +131,13 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 			pt->mime_type=NULL;
 			free(rtpmap);
 		} else if (pt->type == 0) {
-			pt->mime_type=strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
+			pt->mime_type=shm_strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
 		} else if (pt->type == 8) {
-			pt->mime_type=strdup("pcma");
+			pt->mime_type=shm_strdup("pcma");
 		} else if (pt->type == 9) {
-			pt->mime_type=strdup("g722");
+			pt->mime_type=shm_strdup("g722");
 		} else if (pt->type == 18) {
-			pt->mime_type=strdup("g729");
+			pt->mime_type=shm_strdup("g729");
 		}
 		if(pt->mime_type)
 			break;
