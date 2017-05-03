@@ -43,7 +43,8 @@ ser_lock_t session_list_mutex;
 
 static int rms_media_stop(struct sip_msg *, char *, char *);
 static int rms_media_offer(struct sip_msg *, char *, char *);
-static int rms_transfer(struct sip_msg *, char *, char *);
+static int rms_sdp_offer(struct sip_msg *, char *, char *);
+static int rms_sdp_answer(struct sip_msg *, char *, char *);
 static int rms_sessions_dump(struct sip_msg *, char *, char *);
 
 typedef struct rms {

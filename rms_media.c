@@ -150,6 +150,3 @@ int rms_stop_media(call_leg_media_t *m) {
 	if (m->ms_voidsink) ms_filter_destroy(m->ms_voidsink);
 	return 1;
 }
-
-
-

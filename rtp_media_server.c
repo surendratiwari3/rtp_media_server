@@ -27,7 +27,7 @@ static int mod_init(void);
 static void mod_destroy(void);
 static int child_init(int);
 
-static rms_session_info_t rms_session_list;
+static rms_session_info_t *rms_session_list;
 str server_address = {0, 0};
 str playback_fn = {0, 0};
 str log_fn = {0, 0};
@@ -36,7 +36,8 @@ static rms_t rms;
 
 static cmd_export_t cmds[] = {
 	{"rms_media_offer",(cmd_function)rms_media_offer,0,0,0,ANY_ROUTE },
-	{"rms_transfer",(cmd_function)rms_transfer,0,0,0,ANY_ROUTE },
+	{"rms_sdp_offer",(cmd_function)rms_sdp_offer,0,0,0,ANY_ROUTE },
+	{"rms_sdp_answer",(cmd_function)rms_sdp_answer,0,0,0,ANY_ROUTE },
 	{"rms_media_stop",(cmd_function)rms_media_stop,0,0,0,ANY_ROUTE },
 	{"rms_sessions_dump",(cmd_function)rms_sessions_dump,0,0,0,ANY_ROUTE },
 	{0, 0, 0, 0, 0, 0}
@@ -81,10 +82,9 @@ static int mod_init(void) {
 	rms.udp_start_port = 50000;
 	rms.udp_end_port = 60000;
 	rms.udp_last_port = 50000;
-	clist_init(&rms_session_list,next,prev);
+	rms_session_list = shm_malloc(sizeof(rms_session_info_t));
+	clist_init(rms_session_list,next,prev);
 	rms_media_init();
-
-
 
 	if (load_tm_api(&tmb)!=0) {
 		LM_ERR( "can't load TM API\n");
@@ -289,7 +289,8 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 static rms_session_info_t * rms_session_search(char *callid, int len) {
 	lock(&session_list_mutex);
 	rms_session_info_t *si;
-	clist_foreach(&rms_session_list, si, next){
+	clist_foreach(rms_session_list, si, next){
+		LM_INFO("[%s]<>[%s]\n", callid, si->callid.s);
 		if (strncmp(callid, si->callid.s, len) == 0) {
 			unlock(&session_list_mutex);
 			return si;
@@ -417,14 +418,14 @@ rms_session_info_t *rms_session_new(struct sip_msg* msg) {
 		tmb.t_reply(msg,488,"incompatible media format");
 		return NULL;
 	}
-	clist_append(&rms_session_list,si,next,prev);
+	clist_append(rms_session_list,si,next,prev);
 	return si;
 }
 
 int rms_sessions_dump(struct sip_msg* msg, char* param1, char* param2) {
 	int x=1;
 	rms_session_info_t *si;
-	clist_foreach(&rms_session_list, si, next){
+	clist_foreach(rms_session_list, si, next){
 		LM_INFO("[%d] callid[%s] from[%s] to[%s] cseq[%d]", x, si->callid.s, si->from.s, si->to.s, si->cseq);
 		x++;
 	}
@@ -482,15 +483,32 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 	return 1;
 }
 
-int rms_transfer(struct sip_msg* msg, char* param1, char* param2) {
-	if(!rms_relay_call(msg)) {
-		return -1;
-	}
+int rms_sdp_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
 	if (!si)
 		return -1;
 	if (!rms_create_call_leg(msg, si, &si->caller_media))
 		return -1;
+	if (!rms_relay_call(msg)) {
+		return -1;
+	}
+	return 1;
+}
+
+int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
+	rms_session_info_t *si;
+	if(!msg || !msg->callid || !msg->callid->body.s) {
+		LM_INFO("no callid ?\n");
+		return -1;
+	}
+	si = rms_session_search(msg->callid->body.s, msg->callid->body.len);
+	if(!si){
+		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
+		return 1;
+	}
+	LM_INFO("session found [%s] bridging\n", si->callid.s);
+	// create second call leg
+	// replace rtpmap and ftmp
 	return 1;
 }
 
