@@ -2,6 +2,7 @@
 #include "../../core/data_lump.h"
 #include "../../core/parser/parse_content.h"
 
+extern str server_address;
 // https://tools.ietf.org/html/rfc4566
 // (protocol version)
 const char *sdp_v = "v=0\r\n";
@@ -78,6 +79,7 @@ void rms_sdp_prepare_new_body(rms_sdp_info_t * sdp_info, int payload_type_number
 
 	str *body = &sdp_info->new_body;
 	body->len=strlen(sdp_v)+strlen(sdp_s)+strlen(sdp_t);
+	sdp_info->local_ip = server_address.s;
 
 	// (originator and session identifier)
 	char sdp_o[128];
@@ -101,6 +103,8 @@ void rms_sdp_prepare_new_body(rms_sdp_info_t * sdp_info, int payload_type_number
 	strcat(body->s, sdp_c);
 	strcat(body->s, sdp_t);
 	strcat(body->s, sdp_m);
+
+
 }
 
 

@@ -517,32 +517,8 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 	}
 	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
 	rms_sdp_set_body(msg, &sdp_info->new_body);
-	sdp_info->local_ip = server_address.s;
 
-	//// replacing body
 
-	//if(!sdp) {
-	//	LM_INFO("sdp null\n");
-	//	return -1;
-	//}
-	//sdp_info->recv_body.s = sdp->text.s;
-	//sdp_info->recv_body.len = sdp->text.len;
-	//rms_sdp_info_t *sdp_info = &si->sdp_info;
-	//;
-	//rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
-	//str body;
-	//body.s = ((sdp_info_t*)msg->body)->raw_sdp.s;
-	//body.len = ((sdp_info_t*)msg->body)->raw_sdp.len;
-	//struct lump *anchor;
-	//anchor = del_lump(msg, body.s - msg->buf, body.len, 0);
-	//if (!anchor) {
-	//	LM_ERR("del_lump failed\n");
-	//}
-	//if (!insert_new_lump_after(anchor, sdp_info->new_body.s, sdp_info->new_body.len, 0)) {
-	//	LM_ERR("insert_new_lump_after failed\n");
-	//}
-	// create second call leg
-	// replace rtpmap and ftmp
 	return 1;
 }
 
