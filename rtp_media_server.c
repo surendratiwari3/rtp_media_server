@@ -446,6 +446,7 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 	LM_INFO("session found [%s] stopping [%p][%p]\n", si->callid.s, si->caller_media.rtps, si->callee_media.rtps);
 	if (si->callee_media.rtps) {
 		LM_INFO("stop bridged call");
+		rms_stop_bridge(&si->caller_media, &si->callee_media);
 	} else {
 		rms_stop_media(&si->caller_media);
 	}

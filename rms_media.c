@@ -139,6 +139,33 @@ int rms_playfile(call_leg_media_t *m, char* file_name) {
 	return 1;
 }
 
+int rms_stop_bridge(call_leg_media_t *m1, call_leg_media_t *m2) {
+	if (!m1->ms_ticker)
+		return -1;
+	MSConnectionHelper h;
+	if (m1->ms_rtpsend) ms_ticker_detach(m1->ms_ticker, m1->ms_rtpsend);
+	if (m1->ms_rtprecv) ms_ticker_detach(m1->ms_ticker, m1->ms_rtprecv);
+	if (m2->ms_rtpsend) ms_ticker_detach(m1->ms_ticker, m2->ms_rtpsend);
+	if (m2->ms_rtprecv) ms_ticker_detach(m1->ms_ticker, m2->ms_rtprecv);
+	rtp_stats_display(rtp_session_get_stats(m1->rtps)," AUDIO BRIDGE offer RTP STATISTICS ");
+	rtp_stats_display(rtp_session_get_stats(m2->rtps)," AUDIO BRIDGE answer RTP STATISTICS ");
+	ms_factory_log_statistics(m1->ms_factory);
+
+	ms_connection_helper_start(&h);
+	if (m1->ms_rtprecv) ms_connection_helper_unlink(&h, m1->ms_rtprecv,-1,0);
+	if (m2->ms_rtpsend) ms_connection_helper_unlink(&h, m2->ms_rtpsend,0,-1);
+
+	ms_connection_helper_start(&h);
+	if (m2->ms_rtprecv) ms_connection_helper_unlink(&h, m2->ms_rtprecv,-1,0);
+	if (m1->ms_rtpsend) ms_connection_helper_unlink(&h, m1->ms_rtpsend,0,-1);
+
+	if (m1->ms_rtpsend) ms_filter_destroy(m1->ms_rtpsend);
+	if (m1->ms_rtprecv) ms_filter_destroy(m1->ms_rtprecv);
+	if (m2->ms_rtpsend) ms_filter_destroy(m2->ms_rtpsend);
+	if (m2->ms_rtprecv) ms_filter_destroy(m2->ms_rtprecv);
+	return 1;
+}
+
 int rms_stop_media(call_leg_media_t *m) {
 	if (!m->ms_ticker)
 		return -1;
