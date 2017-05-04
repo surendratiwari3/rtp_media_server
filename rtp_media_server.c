@@ -485,12 +485,12 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 int rms_sdp_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
 	rms_sdp_info_t *sdp_info = &si->sdp_info_offer;
-	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
-	rms_sdp_set_body(msg, &sdp_info->new_body);
 	if (!si)
 		return -1;
 	if (!rms_create_call_leg(msg, si, &si->caller_media, sdp_info))
 		return -1;
+	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_set_body(msg, &sdp_info->new_body);
 	if (!rms_relay_call(msg)) {
 		return -1;
 	}
@@ -499,6 +499,7 @@ int rms_sdp_offer(struct sip_msg* msg, char* param1, char* param2) {
 
 int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si;
+
 	if(!msg || !msg->callid || !msg->callid->body.s) {
 		LM_INFO("no callid ?\n");
 		return -1;
@@ -508,17 +509,16 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
 		return 1;
 	}
-	LM_INFO("session found [%s] bridging\n", si->callid.s);
-
 	rms_sdp_info_t *sdp_info = &si->sdp_info_answer;
-	if(!rms_get_sdp_info(sdp_info, msg)) {
+	LM_INFO("session found [%s] bridging\n", si->callid.s);
+	if (!rms_get_sdp_info(sdp_info, msg)) {
 		LM_ERR("can not get SDP information\n");
 		return -1;
 	}
+	if (!rms_create_call_leg(msg, si, &si->caller_media, sdp_info))
+		return -1;
 	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
 	rms_sdp_set_body(msg, &sdp_info->new_body);
-
-
 	return 1;
 }
 
@@ -526,7 +526,8 @@ int rms_media_offer(struct sip_msg* msg, char* param1, char* param2) {
 	rms_session_info_t *si = rms_session_new(msg);
 	if (!si)
 		return -1;
-	if (!rms_create_call_leg(msg, si, &si->caller_media, &si->sdp_info_offer))
+	rms_sdp_info_t *sdp_info = &si->sdp_info_offer;
+	if (!rms_create_call_leg(msg, si, &si->caller_media, sdp_info))
 		return -1;
 	if (!rms_answer_call(msg, si)) {
 		return -1;
