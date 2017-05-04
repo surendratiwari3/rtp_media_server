@@ -21,6 +21,9 @@ Kamailio is doing all the SIP and some SDP related task
 MS2/oRTP is doing all the RTP and media processing
 
 
+# routing script example
+
+### call bridging
 ```
 modparam("rtp_media_server", "server_address", "127.0.0.102")
 modparam("rtp_media_server", "log_file_name", "/tmp/rms_transfer.log")
@@ -32,9 +35,6 @@ onreply_route[rms_reply] {
 	}
 }
 
-# Main SIP request routing logic
-# - processing of any incoming SIP request starts with this route
-# - note: this is the same as route { ... }
 request_route {
 	if (is_method("INVITE") && !has_totag() && has_body("application/sdp")) {
 		record_route();
@@ -55,8 +55,8 @@ request_route {
 }
 ```
 
-# routing script example
-This is only for initial proof of concept to start an RTP session and playback a file
+
+### This is only for initial proof of concept to start an RTP session and playback a file
 ```
         if(is_method("INVITE") && !has_totag()) {
                 xlog("L_INFO","INVITE RECEIVED [$ci]\n");
