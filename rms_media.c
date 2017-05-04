@@ -80,6 +80,25 @@ int create_call_leg_media(call_leg_media_t *m, str *callid){
 	return 1;
 }
 
+int rms_bridge(call_leg_media_t *m1, call_leg_media_t *m2) {
+	MSConnectionHelper h;
+	m1->ms_ticker = rms_create_ticker(NULL);
+
+	// direction 1
+	ms_connection_helper_start(&h);
+	ms_connection_helper_link(&h, m1->ms_rtprecv, -1, 0);
+	ms_connection_helper_link(&h, m2->ms_rtpsend, 0, -1);
+
+	// direction 2
+	ms_connection_helper_start(&h);
+	ms_connection_helper_link(&h, m2->ms_rtprecv, -1, 0);
+	ms_connection_helper_link(&h, m1->ms_rtpsend, 0, -1);
+
+	ms_ticker_attach_multiple(m1->ms_ticker, m1->ms_rtprecv, m2->ms_rtprecv, NULL);
+
+	return 1;
+}
+
 #define MS_UNUSED(x) ((void)(x))
 static void rms_player_eof(void *user_data, MSFilter *f, unsigned int event, void *event_data) {
 	if (event == MS_FILE_PLAYER_EOF) {

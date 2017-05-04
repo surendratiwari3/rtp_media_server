@@ -443,10 +443,12 @@ int rms_media_stop(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
 		return 1;
 	}
-	LM_INFO("session found [%s] stopping\n", si->callid.s);
-	//audio_stream_stop(si->ms.audio_stream);
-	//rtp_profile_destroy(si->ms.rtp_profile);
-	rms_stop_media(&si->caller_media);
+	LM_INFO("session found [%s] stopping [%p][%p]\n", si->callid.s, si->caller_media.rtps, si->callee_media.rtps);
+	if (si->callee_media.rtps) {
+		LM_INFO("stop bridged call");
+	} else {
+		rms_stop_media(&si->caller_media);
+	}
 	rms_session_free(si);
 	tmb.t_newtran(msg);
 	if(!tmb.t_reply(msg,200,"OK")) {
@@ -509,16 +511,18 @@ int rms_sdp_answer(struct sip_msg* msg, char* param1, char* param2) {
 		LM_INFO("session not found ci[%.*s]\n",  msg->callid->body.len, msg->callid->body.s);
 		return 1;
 	}
-	rms_sdp_info_t *sdp_info = &si->sdp_info_answer;
 	LM_INFO("session found [%s] bridging\n", si->callid.s);
+	rms_sdp_info_t *sdp_info = &si->sdp_info_answer;
 	if (!rms_get_sdp_info(sdp_info, msg)) {
 		LM_ERR("can not get SDP information\n");
 		return -1;
 	}
-	if (!rms_create_call_leg(msg, si, &si->caller_media, sdp_info))
+	si->callee_media.pt = rms_sdp_check_payload(sdp_info);
+	if (!rms_create_call_leg(msg, si, &si->callee_media, sdp_info))
 		return -1;
-	rms_sdp_prepare_new_body(sdp_info, si->caller_media.pt->type);
+	rms_sdp_prepare_new_body(sdp_info, si->callee_media.pt->type);
 	rms_sdp_set_body(msg, &sdp_info->new_body);
+	rms_bridge(&si->caller_media, &si->callee_media);
 	return 1;
 }
 

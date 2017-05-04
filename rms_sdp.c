@@ -103,8 +103,6 @@ void rms_sdp_prepare_new_body(rms_sdp_info_t * sdp_info, int payload_type_number
 	strcat(body->s, sdp_c);
 	strcat(body->s, sdp_t);
 	strcat(body->s, sdp_m);
-
-
 }
 
 
