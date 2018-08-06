@@ -108,7 +108,7 @@ void rms_sdp_prepare_new_body(rms_sdp_info_t * sdp_info, int payload_type_number
 
 PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 	// https://tools.ietf.org/html/rfc3551
-	LM_INFO("payloads[%s]", sdp->payloads); //0 8
+	LM_INFO("payloads[%s]\n", sdp->payloads); //0 8
 	PayloadType *pt = payload_type_new();
 	char * payloads = sdp->payloads;
 	char * payload_type_number=strtok(payloads," ");
@@ -123,18 +123,19 @@ PayloadType* rms_sdp_check_payload(rms_sdp_info_t *sdp) {
 	while(!pt->mime_type) {
 		if (pt->type > 127) {
 			return NULL;
-		} else if (pt->type >= 96) {
-			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
-			pt->mime_type = rms_shm_strdup(strtok(rtpmap, "/"));
-			if (strcasecmp(pt->mime_type,"opus") == 0) {
-				pt->clock_rate = atoi(strtok(NULL, "/"));
-				pt->channels = atoi(strtok(NULL, "/"));
-				free(rtpmap);
-				return pt;
-			}
-			free(pt->mime_type);
-			pt->mime_type=NULL;
-			free(rtpmap);
+//		} else if (pt->type >= 96) {
+//			continue;
+//			char *rtpmap = rms_sdp_get_rtpmap(sdp->recv_body, pt->type);
+//			pt->mime_type = rms_shm_strdup(strtok(rtpmap, "/"));
+//			if (strcasecmp(pt->mime_type,"opus") == 0) {
+//				pt->clock_rate = atoi(strtok(NULL, "/"));
+//				pt->channels = atoi(strtok(NULL, "/"));
+//				shm_free(rtpmap);
+//				return pt;
+//			}
+//			shm_free(pt->mime_type);
+//			pt->mime_type=NULL;
+//			shm_free(rtpmap);
 		} else if (pt->type == 0) {
 			pt->mime_type=rms_shm_strdup("pcmu"); /* ia=rtpmap:0 PCMU/8000*/
 		} else if (pt->type == 8) {

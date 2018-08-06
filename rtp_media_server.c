@@ -279,9 +279,11 @@ static int rms_answer_call(struct sip_msg* msg, rms_session_info_t *si) {
 	strcpy(si->to.s, buffer);
 	LM_INFO("[to] %s\n", si->to.s);
 
+	LM_INFO("reply !\n");
 	if(!tmb.t_reply_with_body(tmb.t_gett(),200,&reason,&sdp_info->new_body,&contact_hdr,&to_tag)) {
 		LM_INFO("t_reply error");
 	}
+	LM_INFO("answered\n");
 	return 1;
 }
 
@@ -472,12 +474,12 @@ int rms_create_call_leg(struct sip_msg* msg, rms_session_info_t *si, call_leg_me
 	m->local_port = rms_get_udp_port();
 	sdp_info->udp_local_port = m->local_port;
 
-	LM_INFO("server IP[%s][%d]", server_address.s, server_address.len);
+	LM_INFO("server IP[%s][%d]\n", server_address.s, server_address.len);
 	m->local_ip = server_address.s;
 	m->remote_port = atoi(sdp_info->remote_port);
 	m->remote_ip = sdp_info->remote_ip;
 
-	LM_INFO("remote_socket[%s:%s] local_socket[%s:%d] pt[%s]",
+	LM_INFO("remote_socket[%s:%s] local_socket[%s:%d] pt[%s]\n",
 			sdp_info->remote_ip, sdp_info->remote_port,
 			m->local_ip, m->local_port,
 			si->caller_media.pt->mime_type);
